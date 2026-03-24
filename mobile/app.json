@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "OSM Scout Pro",
+    "slug": "osm-scout",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.doonstein.osmscout",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#000000"
+      },
+      "permissions": [
+        "INTERNET"
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "8b2d09b9-cb6b-4bad-92fa-e719c1639d99"
+      }
+    }
+  }
+}

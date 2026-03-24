@@ -47,6 +47,9 @@ export default function App() {
   const [generatedTrips, setGeneratedTrips] = useState<any[]>([]);
   
   const [calculating, setCalculating] = useState(false);
+  const [smartNationality, setSmartNationality] = useState<string | null>(null);
+  const [smartAgeRange, setSmartAgeRange] = useState<string | null>(null);
+  const [smartQualityRange, setSmartQualityRange] = useState<string | null>(null);
 
   // Selector Data
   const [nationalities, setNationalities] = useState<string[]>([]);
@@ -188,8 +191,12 @@ export default function App() {
     if (targetPositions.length === 0) return;
     setCalculating(true);
     try {
-        const trips = await discoverCombosForPositions(supabase, targetPositions);
-        setGeneratedTrips(trips);
+        const res = await discoverCombosForPositions(supabase, targetPositions, {
+            nationality: smartNationality,
+            ageRange: smartAgeRange,
+            qualityRange: smartQualityRange
+        });
+        setGeneratedTrips(res);
     } catch(e) {
         console.log("Combo Error:", e);
     } finally {
@@ -642,10 +649,35 @@ export default function App() {
                  )}
                  </View>
                  )}
-                 
                  {smartMode === 'positions' && (
                      <View>
-                        <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">CONSTRUYE LA MULTI-BÚSQUEDA</Text>
+                        <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">FILTROS ADICIONALES (OPCIONAL)</Text>
+                        <View className="flex-row gap-2 mb-4">
+                           <TouchableOpacity 
+                               className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2"
+                               onPress={() => openSelector("Nacionalidad", nationalities, setSmartNationality, (v) => v)}
+                           >
+                               <Text className="text-slate-500 text-[8px] font-bold mb-0.5">NACIONALIDAD</Text>
+                               <Text className="text-white font-bold text-xs" numberOfLines={1}>{smartNationality || "Cualquiera"}</Text>
+                           </TouchableOpacity>
+                           
+                           <TouchableOpacity 
+                               className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2"
+                               onPress={() => openSelector("Rango de Edad", ['<20', '20-24', '25-29', '30-34', '>34'], setSmartAgeRange, (v) => v)}
+                           >
+                               <Text className="text-slate-500 text-[8px] font-bold mb-0.5">EDAD</Text>
+                                <Text className="text-white font-bold text-xs" numberOfLines={1}>{smartAgeRange || "Cualquiera"}</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity 
+                                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2"
+                                onPress={() => openSelector("Media (Calidad)", ['Cualquiera', '100+', '85-99', '80-84', '75-79', '70-74', '60-69', '50-59'], (v) => setSmartQualityRange(v === 'Cualquiera' ? null : v), (v) => v)}
+                            >
+                                <Text className="text-slate-500 text-[8px] font-bold mb-0.5">MEDIA (OVR)</Text>
+                                <Text className="text-white font-bold text-xs" numberOfLines={1}>{smartQualityRange || "Cualquiera"}</Text>
+                            </TouchableOpacity>
+                         </View>
+                         <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">CONSTRUYE LA MULTI-BÚSQUEDA</Text>
                         <View className="flex-row flex-wrap gap-2 mb-4">
                              {['ST', 'RW', 'LW', 'CAM', 'CM', 'CDM', 'RM', 'LM', 'CB', 'RB', 'LB'].map(pos => (
                                  <TouchableOpacity key={pos} onPress={() => setTargetPositions(prev => [...prev, pos])}>
@@ -677,31 +709,49 @@ export default function App() {
                             </Animated.View>
                         )}
 
-                        {generatedTrips.length > 0 && (
+                        {(generatedTrips as any) && (Array.isArray(generatedTrips) ? (generatedTrips as any[]) : (generatedTrips as any).recommendations).length > 0 && (
                              <Animated.View entering={FadeInUp} className="w-full">
-                                <Text className="text-white font-black text-lg mb-4">Los {generatedTrips.length} Mejores Viajes Posibles:</Text>
-                                {generatedTrips.map((trip: any, tIdx: number) => (
-                                   <View key={tIdx} className={`mb-6 p-5 rounded-3xl border w-full ${trip.noiseCount === 0 ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-white/5 border-white/10'}`}>
+                                {(generatedTrips as any).isRecommendation && (
+                                    <View className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-3xl mb-4">
+                                        <Text className="text-amber-400 font-black text-xs mb-1">⚠️ SIN COMBINACIONES DIRECTAS</Text>
+                                        <Text className="text-amber-200/70 text-[10px]">No encontramos combos que cumplan todos los requisitos a la vez. Aquí tienes recomendaciones relajando los filtros:</Text>
+                                    </View>
+                                )}
+                                <Text className="text-white font-black text-lg mb-4">
+                                    {(generatedTrips as any).isRecommendation ? "Sugerencias de Búsqueda:" : `Los ${(generatedTrips as any[]).length} Mejores Viajes Posibles:`}
+                                </Text>
+                                {(Array.isArray(generatedTrips) ? (generatedTrips as any[]) : (generatedTrips as any).recommendations).map((trip: any, tIdx: number) => (
+                                   <View key={tIdx} className={`mb-6 p-5 rounded-3xl border w-full ${trip.probability >= 50 ? 'bg-emerald-500/10 border-emerald-500/20' : trip.probability >= 15 ? 'bg-amber-500/10 border-amber-500/20' : 'bg-white/5 border-white/10'}`}>
                                        <View className="flex-row justify-between items-center mb-3">
                                            <Text className="text-white font-black uppercase text-xs">VIAJE #{tIdx + 1}</Text>
-                                           <View className={`px-2 py-0.5 rounded ${trip.noiseCount === 0 ? 'bg-emerald-500' : 'bg-slate-700'}`}>
-                                               <Text className="text-black font-black text-[10px]">{Math.round(trip.probability)}% PROB</Text>
+                                           <View className={`px-2 py-0.5 rounded ${trip.probability >= 50 ? 'bg-emerald-500' : trip.probability >= 15 ? 'bg-amber-400' : 'bg-slate-700'}`}>
+                                               <Text className={`font-black text-[10px] ${trip.probability >= 15 ? 'text-black' : 'text-white'}`}>{Math.round(trip.probability)}% PROB</Text>
                                            </View>
                                        </View>
-                                       
-                                       <View className="flex-row flex-wrap gap-2 mb-4">
-                                            {Object.entries(trip.filters).map(([key, val]: [string, any]) => {
-                                                if (val === 'Cualquiera') return null;
-                                                return (
-                                                    <View key={key} className="bg-indigo-500/20 px-2 py-1 rounded">
-                                                        <Text className="text-indigo-300 font-bold text-[10px] uppercase">{val}</Text>
+                                       {trip.coveredPositions && trip.coveredPositions.length > 0 && (
+                                            <View className="flex-row gap-2 flex-wrap mb-3 mt-1">
+                                                <Text className="text-emerald-400/70 text-[9px] font-black uppercase tracking-widest w-full">✅ Cubre:</Text>
+                                                {trip.coveredPositions.map((pos: string) => (
+                                                    <View key={pos} className="bg-emerald-500/30 border border-emerald-500/50 px-2 py-0.5 rounded-full">
+                                                        <Text className="text-emerald-300 font-black text-[10px]">{pos}</Text>
                                                     </View>
-                                                );
-                                            })}
-                                       </View>
+                                                ))}
+                                            </View>
+                                        )}
+
+                                        <View className="flex-row flex-wrap gap-2 mb-4">
+                                             {Object.entries(trip.filters).map(([key, val]: [string, any]) => {
+                                                 if (!val || val === '') return null;
+                                                 return (
+                                                     <View key={key} className="bg-indigo-500/20 px-2 py-1 rounded">
+                                                         <Text className="text-indigo-300 font-bold text-[10px] uppercase">{val}</Text>
+                                                     </View>
+                                                 );
+                                             })}
+                                        </View>
 
                                        <View className="bg-black/20 p-3 rounded-xl border border-white/5">
-                                            <Text className="text-slate-400 text-[10px] uppercase tracking-widest font-bold mb-2">Desglose del Pool ({trip.totalMatching} jugad.):</Text>
+                                            <Text className="text-slate-400 text-[10px] uppercase tracking-widest font-bold mb-2">Pool Total: {trip.totalMatching} jugadores</Text>
                                             <View className="flex-row gap-2 flex-wrap pb-2 mb-2 border-b border-white/5">
                                                 {Object.entries(trip.matchingPlayers.reduce((acc:any, p:any) => {
                                                     acc[p.detailed_position] = (acc[p.detailed_position] || 0) + 1; return acc;
