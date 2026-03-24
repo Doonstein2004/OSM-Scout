@@ -53,24 +53,33 @@ def parse_player_data(page):
             for r in range(rows.count()):
                 row = rows.nth(r)
                 try:
-                    name = row.locator("td.td-player-name span.semi-bold").inner_text().strip()
+                    name_loc = row.locator("td.td-player-name span.semi-bold")
+                    if name_loc.count() == 0:
+                        continue
+                    
+                    name = name_loc.first.inner_text(timeout=2000).strip()
                     # Detailed position (LW, ST, CAM, etc.)
-                    pos_detail = row.locator("td").nth(1).inner_text().strip()
-                    age = int(row.locator("td").nth(2).inner_text().strip())
+                    pos_detail = row.locator("td").nth(1).inner_text(timeout=2000).strip()
+                    age = int(row.locator("td").nth(2).inner_text(timeout=2000).strip())
                     
                     # Nationality from flag title
                     nat_el = row.locator("td").nth(3).locator("span.flag-icon")
-                    nationality = nat_el.get_attribute("title") if nat_el.count() > 0 else "N/A"
+                    nationality = nat_el.first.get_attribute("title", timeout=2000) if nat_el.count() > 0 else "N/A"
                     
                     # Stats
                     # Att: index 5, Def: index 6, Ovr: index 7
-                    att = int(row.locator("td").nth(5).inner_text().strip())
-                    defe = int(row.locator("td").nth(6).inner_text().strip())
-                    ovr_stat = int(row.locator("td").nth(7).inner_text().strip())
+                    att_str = row.locator("td").nth(5).inner_text(timeout=2000).strip()
+                    att = int(att_str) if att_str.isdigit() else 0
+                    
+                    def_str = row.locator("td").nth(6).inner_text(timeout=2000).strip()
+                    defe = int(def_str) if def_str.isdigit() else 0
+                    
+                    ovr_str = row.locator("td").nth(7).inner_text(timeout=2000).strip()
+                    ovr_stat = int(ovr_str) if ovr_str.isdigit() else 0
                     
                     # Value
                     val_el = row.locator("td.td-price span.club-funds-amount")
-                    val_str = val_el.inner_text().strip() if val_el.count() > 0 else "N/A"
+                    val_str = val_el.first.inner_text(timeout=2000).strip() if val_el.count() > 0 else "N/A"
                     val_amount, _ = parse_value_string(val_str)
                     
                     # Goal: overall (Att for forwards, Ovr for mids, Def for defs/GKs)
@@ -95,7 +104,7 @@ def parse_player_data(page):
                         "value_str": val_str
                     })
                 except Exception as e:
-                    print(f"      - Error en jugador: {e}")
+                    print(f"      - Fila omitida o inválida: {e}")
         return players
     except Exception as e:
         print(f"    - Error extrayendo jugadores: {e}")
