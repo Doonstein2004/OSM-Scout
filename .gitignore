@@ -11,7 +11,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -51,4 +51,6 @@ test_supabase.py
 !package.json
 !tsconfig.json
 !app.json
+!eas.json
+!babel.config.js
 !scraper/osm_data.json # Opcional: si quieres guardar el resultado en git
