@@ -16,7 +16,7 @@ import Animated, { FadeInUp, LinearTransition } from 'react-native-reanimated';
 import { supabase } from './lib/supabase';
 import './lib/i18n';
 import { useTranslation } from 'react-i18next';
-import { findOptimalCombination } from './lib/scouter';
+import { findOptimalCombination, discoverCombosForPositions } from './lib/scouter';
 import './global.css';
 
 export default function App() {
@@ -39,8 +39,13 @@ export default function App() {
   const [filterClub, setFilterClub] = useState<any>(null); // object {id, name}
   
   // Smart Scout State
+  const [smartMode, setSmartMode] = useState<'players' | 'positions'>('players');
   const [targetPlayers, setTargetPlayers] = useState<any[]>([]);
   const [combinationResult, setCombinationResult] = useState<any>(null);
+  
+  const [targetPositions, setTargetPositions] = useState<string[]>([]);
+  const [generatedTrips, setGeneratedTrips] = useState<any[]>([]);
+  
   const [calculating, setCalculating] = useState(false);
 
   // Selector Data
@@ -132,13 +137,13 @@ export default function App() {
           query = query.eq('overall', parseInt(filterExactQuality));
       } else if (filterQuality.length > 0) {
          const qualityQueries = filterQuality.map(q => {
-             if (q === '< 70') return `overall.lt.70`;
+             if (q === '50-59') return `and(overall.gte.50,overall.lte.59)`;
+             if (q === '60-69') return `and(overall.gte.60,overall.lte.69)`;
              if (q === '70-74') return `and(overall.gte.70,overall.lte.74)`;
              if (q === '75-79') return `and(overall.gte.75,overall.lte.79)`;
              if (q === '80-84') return `and(overall.gte.80,overall.lte.84)`;
-             if (q === '85-89') return `and(overall.gte.85,overall.lte.89)`;
-             if (q === '90-94') return `and(overall.gte.90,overall.lte.94)`;
-             if (q === '95+') return `overall.gte.95`;
+             if (q === '85-99') return `and(overall.gte.85,overall.lte.99)`;
+             if (q === '100+') return `overall.gte.100`;
              return '';
          }).join(',');
          query = query.or(qualityQueries);
@@ -179,9 +184,27 @@ export default function App() {
     }
   };
 
+  const calculateSubPositions = async () => {
+    if (targetPositions.length === 0) return;
+    setCalculating(true);
+    try {
+        const trips = await discoverCombosForPositions(supabase, targetPositions);
+        setGeneratedTrips(trips);
+    } catch(e) {
+        console.log("Combo Error:", e);
+    } finally {
+        setCalculating(false);
+    }
+  };
+
   const removeTargetPlayer = (id: string) => {
     setTargetPlayers(prev => prev.filter(x => x.id !== id));
     setCombinationResult(null);
+  };
+  
+  const removeTargetPos = (idx: number) => {
+    setTargetPositions(prev => prev.filter((_, i) => i !== idx));
+    setGeneratedTrips([]);
   };
   
   const resetFilters = () => {
@@ -333,7 +356,7 @@ export default function App() {
                     {/* Quality Filter (Horizontal) */}
                     <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2 pl-1">RANGO DE CALIDAD (OVERALL)</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-6" contentContainerStyle={{ gap: 8, paddingRight: 20 }}>
-                        {['< 70', '70-74', '75-79', '80-84', '85-89', '90-94', '95+'].map(qual => (
+                        {['50-59', '60-69', '70-74', '75-79', '80-84', '85-99', '100+'].map(qual => (
                             <TouchableOpacity key={qual} onPress={() => toggleArrayItem(setFilterQuality, qual)}>
                                 <View className={`border rounded-xl h-10 px-3 justify-center items-center ${filterQuality.includes(qual) ? 'bg-amber-500/20 border-amber-500/60 shadow-lg shadow-amber-500/20' : 'bg-white/5 border-white/10'}`}>
                                     <Text className={`${filterQuality.includes(qual) ? 'text-amber-400 font-black' : 'text-slate-300 font-medium'} text-xs`}>
@@ -495,9 +518,27 @@ export default function App() {
             <Tabs.Content value="smart" style={{ flex: 1, width: '100%' }}>
                <ScrollView className="px-6 py-4 flex-1 w-full" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
                  <Text className="text-3xl font-black text-white mb-2">SC<Text className="text-emerald-400">O</Text>RE</Text>
-                 <Text className="text-slate-400 text-sm mb-6 leading-relaxed">Encuentra la combinación perfecta de filtros para traer todos estos jugadores exactos en un solo viaje del Ojeador.</Text>
+                 <Text className="text-slate-400 text-sm mb-4 leading-relaxed">Piratea los filtros de OSM descubriendo combinaciones perfectas.</Text>
                  
-                 {targetPlayers.length > 0 ? (
+                 {/* Mode Toggle */}
+                 <View className="flex-row bg-white/5 p-1 rounded-2xl mb-6">
+                     <TouchableOpacity 
+                         onPress={() => setSmartMode('players')}
+                         className={`flex-1 py-3 items-center rounded-xl ${smartMode === 'players' ? 'bg-emerald-500 shadow-md' : ''}`}
+                     >
+                         <Text className={`font-bold text-xs ${smartMode === 'players' ? 'text-black' : 'text-slate-400'}`}>POR JUGADOR</Text>
+                     </TouchableOpacity>
+                     <TouchableOpacity 
+                         onPress={() => setSmartMode('positions')}
+                         className={`flex-1 py-3 items-center rounded-xl ${smartMode === 'positions' ? 'bg-emerald-500 shadow-md' : ''}`}
+                     >
+                         <Text className={`font-bold text-xs ${smartMode === 'positions' ? 'text-black' : 'text-slate-400'}`}>POR POSICIÓN</Text>
+                     </TouchableOpacity>
+                 </View>
+
+                 {smartMode === 'players' && (
+                     <View>
+                        {targetPlayers.length > 0 ? (
                    <Animated.View entering={FadeInUp} layout={LinearTransition} className="gap-4 w-full">
                      <View className="flex-row gap-2 flex-wrap mb-4 w-full">
                        {targetPlayers.map((p: any, i) => (
@@ -593,11 +634,97 @@ export default function App() {
                      )}
                    </Animated.View>
                  ) : (
-                   <View className="py-32 items-center justify-center opacity-40 w-full">
+                   <View className="py-20 items-center justify-center opacity-40 w-full">
                      <Text className="text-6xl mb-4">🔮</Text>
-                     <Text className="text-white text-center font-bold text-lg mb-2">Smart Scout Dormido</Text>
-                     <Text className="text-slate-400 text-center text-sm px-4 leading-relaxed">Ve a la pestaña Ojeador, añade de 1 a 3 jugadores, y deja que nuestra IA calcule cómo piratear los filtros del juego.</Text>
+                     <Text className="text-white text-center font-bold text-lg mb-2">Añade Jugadores</Text>
+                     <Text className="text-slate-400 text-center text-sm px-4 leading-relaxed">Ve a la pestaña Ojeador, añade de 1 a 3 jugadores a tu lista.</Text>
                    </View>
+                 )}
+                 </View>
+                 )}
+                 
+                 {smartMode === 'positions' && (
+                     <View>
+                        <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">CONSTRUYE LA MULTI-BÚSQUEDA</Text>
+                        <View className="flex-row flex-wrap gap-2 mb-4">
+                             {['ST', 'RW', 'LW', 'CAM', 'CM', 'CDM', 'RM', 'LM', 'CB', 'RB', 'LB'].map(pos => (
+                                 <TouchableOpacity key={pos} onPress={() => setTargetPositions(prev => [...prev, pos])}>
+                                     <View className="border border-indigo-500/30 bg-indigo-500/10 h-8 px-4 justify-center items-center rounded-lg">
+                                         <Text className="text-indigo-300 font-bold text-xs">{pos}</Text>
+                                     </View>
+                                 </TouchableOpacity>
+                             ))}
+                        </View>
+                        
+                        {targetPositions.length > 0 && (
+                            <Animated.View entering={FadeInUp} className="gap-4 w-full mb-6">
+                                <View className="flex-row gap-2 flex-wrap mb-2">
+                                    {targetPositions.map((p, i) => (
+                                        <TouchableOpacity key={i} onPress={() => removeTargetPos(i)}>
+                                            <View className="bg-emerald-500/20 border border-emerald-500/30 py-1 px-3 rounded-full">
+                                                <Text className="text-emerald-400 font-bold text-xs">{p} ✕</Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                                <Button size="lg" className="bg-indigo-500 rounded-2xl h-14 shadow-xl shadow-indigo-500/20 w-full" onPress={calculateSubPositions} isDisabled={calculating}>
+                                  {calculating ? (
+                                      <Spinner size="md" className="text-white" />
+                                  ) : (
+                                      <Button.Label className="text-white font-black text-xs tracking-widest">MINAR BASE DE DATOS 🪄</Button.Label>
+                                  )}
+                                </Button>
+                            </Animated.View>
+                        )}
+
+                        {generatedTrips.length > 0 && (
+                             <Animated.View entering={FadeInUp} className="w-full">
+                                <Text className="text-white font-black text-lg mb-4">Los {generatedTrips.length} Mejores Viajes Posibles:</Text>
+                                {generatedTrips.map((trip: any, tIdx: number) => (
+                                   <View key={tIdx} className={`mb-6 p-5 rounded-3xl border w-full ${trip.noiseCount === 0 ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-white/5 border-white/10'}`}>
+                                       <View className="flex-row justify-between items-center mb-3">
+                                           <Text className="text-white font-black uppercase text-xs">VIAJE #{tIdx + 1}</Text>
+                                           <View className={`px-2 py-0.5 rounded ${trip.noiseCount === 0 ? 'bg-emerald-500' : 'bg-slate-700'}`}>
+                                               <Text className="text-black font-black text-[10px]">{Math.round(trip.probability)}% PROB</Text>
+                                           </View>
+                                       </View>
+                                       
+                                       <View className="flex-row flex-wrap gap-2 mb-4">
+                                            {Object.entries(trip.filters).map(([key, val]: [string, any]) => {
+                                                if (val === 'Cualquiera') return null;
+                                                return (
+                                                    <View key={key} className="bg-indigo-500/20 px-2 py-1 rounded">
+                                                        <Text className="text-indigo-300 font-bold text-[10px] uppercase">{val}</Text>
+                                                    </View>
+                                                );
+                                            })}
+                                       </View>
+
+                                       <View className="bg-black/20 p-3 rounded-xl border border-white/5">
+                                            <Text className="text-slate-400 text-[10px] uppercase tracking-widest font-bold mb-2">Desglose del Pool ({trip.totalMatching} jugad.):</Text>
+                                            <View className="flex-row gap-2 flex-wrap pb-2 mb-2 border-b border-white/5">
+                                                {Object.entries(trip.matchingPlayers.reduce((acc:any, p:any) => {
+                                                    acc[p.detailed_position] = (acc[p.detailed_position] || 0) + 1; return acc;
+                                                }, {})).map(([pos, c]: [string, any]) => (
+                                                    <View key={pos} className="flex-row items-center">
+                                                        <Text className="text-amber-300 font-black text-xs">{c} </Text>
+                                                        <Text className="text-slate-400 text-xs">{pos}</Text>
+                                                    </View>
+                                                ))}
+                                            </View>
+                                            {trip.matchingPlayers.map((p: any) => (
+                                                <Text key={p.id} className="text-white/60 text-[10px]">• {p.name} ({p.overall}) - {p.detailed_position}</Text>
+                                            ))}
+                                       </View>
+                                   </View>
+                                ))}
+                             </Animated.View>
+                        )}
+                        
+                        {targetPositions.length > 0 && generatedTrips.length === 0 && !calculating && (
+                            <Text className="text-white/50 text-center my-10 italic">Pulsa MINAR para buscar combos universales.</Text>
+                        )}
+                     </View>
                  )}
                </ScrollView>
             </Tabs.Content>
