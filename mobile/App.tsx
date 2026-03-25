@@ -146,7 +146,7 @@ export default function App() {
              if (q === '75-79') return `and(overall.gte.75,overall.lte.79)`;
              if (q === '80-84') return `and(overall.gte.80,overall.lte.84)`;
              if (q === '85-99') return `and(overall.gte.85,overall.lte.99)`;
-             if (q === '100+') return `overall.gte.100`;
+             if (q === '+100') return `overall.gte.100`;
              return '';
          }).join(',');
          query = query.or(qualityQueries);
@@ -363,11 +363,11 @@ export default function App() {
                     {/* Quality Filter (Horizontal) */}
                     <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2 pl-1">RANGO DE CALIDAD (OVERALL)</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-6" contentContainerStyle={{ gap: 8, paddingRight: 20 }}>
-                        {['50-59', '60-69', '70-74', '75-79', '80-84', '85-99', '100+'].map(qual => (
+                        {['+100', '85-99', '80-84', '75-79', '70-74', '60-69', '50-59'].map(qual => (
                             <TouchableOpacity key={qual} onPress={() => toggleArrayItem(setFilterQuality, qual)}>
                                 <View className={`border rounded-xl h-10 px-3 justify-center items-center ${filterQuality.includes(qual) ? 'bg-amber-500/20 border-amber-500/60 shadow-lg shadow-amber-500/20' : 'bg-white/5 border-white/10'}`}>
                                     <Text className={`${filterQuality.includes(qual) ? 'text-amber-400 font-black' : 'text-slate-300 font-medium'} text-xs`}>
-                                        ⭐ {qual}
+                                        {qual === '+100' ? '✨ +100' : `⭐ ${qual}`}
                                     </Text>
                                 </View>
                             </TouchableOpacity>
@@ -671,10 +671,11 @@ export default function App() {
 
                             <TouchableOpacity 
                                 className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2"
-                                onPress={() => openSelector("Media (Calidad)", ['Cualquiera', '100+', '85-99', '80-84', '75-79', '70-74', '60-69', '50-59'], (v) => setSmartQualityRange(v === 'Cualquiera' ? null : v), (v) => v)}
+                                                                 onPress={() => openSelector("Media (Calidad)", ['Cualquiera', '+100', '85-99', '80-84', '75-79', '70-74', '60-69', '50-59'], (v) => setSmartQualityRange(v === 'Cualquiera' ? null : v), (v) => v === '+100' ? '✨ +100 (Estrella)' : v)}
+
                             >
                                 <Text className="text-slate-500 text-[8px] font-bold mb-0.5">MEDIA (OVR)</Text>
-                                <Text className="text-white font-bold text-xs" numberOfLines={1}>{smartQualityRange || "Cualquiera"}</Text>
+                                <Text className="text-white font-bold text-xs" numberOfLines={1}>{smartQualityRange === '+100' ? "✨ +100 (Estrella)" : (smartQualityRange || "Cualquiera")}</Text>
                             </TouchableOpacity>
                          </View>
                          <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">CONSTRUYE LA MULTI-BÚSQUEDA</Text>

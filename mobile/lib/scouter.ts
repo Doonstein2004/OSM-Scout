@@ -31,7 +31,7 @@ export function getAgeBounds(range: string): [number, number] {
   if (range === '25-29') return [25, 29];
   if (range === '30-34') return [30, 34];
   if (range === '>34') return [35, 100];
-  return [0, 100]; // 'Cualquiera'
+  return [0, 100];
 }
 
 export function getQualityBounds(range: string): [number, number] {
@@ -43,7 +43,7 @@ export function getQualityBounds(range: string): [number, number] {
   if (range === '60-69') return [60, 69];
   if (range === '50-59') return [50, 59];
   if (range === '<50') return [0, 49];
-  return [0, 200]; // 'Cualquiera'
+  return [0, 200];
 }
 
 function toGeneralPos(specPos: string): string {
@@ -67,8 +67,6 @@ function calculateSmartProbability(pool: any[], targetPositions: string[]): numb
   const total = pool.length;
   if (total === 0) return 0;
   if (total <= 3) return 100;
-
-  // Probability that in 3 picks, we hit at least one player for EVERY target position
   let prob = 1.0;
   for (const pos of targetPositions) {
     const count = pool.filter(p => p.detailed_position === pos).length;
@@ -79,11 +77,14 @@ function calculateSmartProbability(pool: any[], targetPositions: string[]): numb
 }
 
 /**
- * UNIFIED SNIPER ALGORITHM
- * 
- * Goal: Find a combination of (Nationality, League, Age, Quality) such that
- * selecting the broad 'Position' (Forward/Mid/Def) returns a pool that 
- * contains ALL specified detailed positions with the highest probability.
+ * SMART SNIPER ALGORITHM — Dual Mode
+ *
+ * Mode 1 (Normal): qualityRange = '60-69', '70-74', etc.
+ *   → Groups by (Nat, League, Age, OVR) — finds best pool within that OVR range
+ *
+ * Mode 2 (World Star): qualityRange = '+100'
+ *   → Groups by (Nat, League, Age) ONLY — ignores OVR because the scout
+ *     brings ALL players when you select +100, regardless of their base OVR
  */
 export async function discoverCombosForPositions(
   supabase: any,
@@ -91,15 +92,14 @@ export async function discoverCombosForPositions(
   extraFilters?: { nationality?: string | null; ageRange?: string | null; qualityRange?: string | null }
 ) {
   const generalPositions = Array.from(new Set(targetPositions.map(toGeneralPos)));
-  // If multiple general positions (e.g. ST and CB), we can't do it in one trip.
-  // We'll prioritize the most frequent general position.
-  const posCounts = generalPositions.reduce((acc: any, p) => { acc[p] = (acc[p]||0)+1; return acc; }, {});
-  const mainPos = Object.keys(posCounts).sort((a,b) => posCounts[b] - posCounts[a])[0];
-  
-  // Filter targetPositions to only those of mainPos
+  const posCounts: any = {};
+  generalPositions.forEach(p => { posCounts[p] = (posCounts[p] || 0) + 1; });
+  const mainPos = Object.keys(posCounts).sort((a, b) => posCounts[b] - posCounts[a])[0];
   const activeTargets = targetPositions.filter(tp => toGeneralPos(tp) === mainPos);
 
-  // --- STEP 1: Fetch ALL players in the target detailed positions ---
+  const isWorldStar = extraFilters?.qualityRange === '+100';
+
+  // --- STEP 1: Fetch candidates (players in target positions) ---
   let query = supabase
     .from('players')
     .select('id, name, overall, detailed_position, nationality, age, clubs!inner(id, league_id, leagues(id, name))')
@@ -110,7 +110,8 @@ export async function discoverCombosForPositions(
     const [minA, maxA] = getAgeBounds(extraFilters.ageRange);
     query = query.gte('age', minA).lte('age', maxA);
   }
-  if (extraFilters?.qualityRange) {
+  // In World Star mode, do NOT filter by OVR — we want ALL players
+  if (extraFilters?.qualityRange && !isWorldStar) {
     const [minQ, maxQ] = getQualityBounds(extraFilters.qualityRange);
     query = query.gte('overall', minQ).lte('overall', maxQ);
   }
@@ -118,62 +119,76 @@ export async function discoverCombosForPositions(
   const { data: candidates, error } = await query.limit(4000);
   if (error || !candidates || candidates.length === 0) return [];
 
-  // --- STEP 2: Group into potential filter combinations ---
-  // We'll try specific ranges AND 'Cualquiera' for each dimension.
+  // --- STEP 2: Group into filter combinations ---
   const combos = new Map<string, any>();
 
-  const AGE_RANGES = ['Cualquiera', '<20', '20-24', '25-29', '30-34', '>34'];
-  const QUALITY_RANGES = ['Cualquiera', '50-59', '60-69', '70-74', '75-79', '80-84', '85-99', '100+'];
-
   for (const p of candidates) {
-    const nats = [p.nationality, 'Cualquiera'];
-    const leagues = [{ id: p.clubs.league_id, name: p.clubs.leagues.name }, { id: 'Cualquiera', name: 'Cualquiera' }];
+    const nats = [p.nationality];
+    const leagues = [{ id: p.clubs.league_id, name: p.clubs.leagues.name }];
     const ages = [getOSMAgeRange(p.age), 'Cualquiera'];
-    const quals = [getOSMQualityRange(p.overall), 'Cualquiera'];
 
-    // If user provided extra filters, restrict candidates
     const filteredNats = extraFilters?.nationality ? [extraFilters.nationality] : nats;
     const filteredAges = extraFilters?.ageRange ? [extraFilters.ageRange] : ages;
-    const filteredQuals = extraFilters?.qualityRange ? [extraFilters.qualityRange] : quals;
 
-    for (const nat of filteredNats) {
-      for (const league of leagues) {
-        if (league.id === 'Cualquiera' && nat === 'Cualquiera') continue; // Too broad
-        for (const age of filteredAges) {
-          for (const qual of filteredQuals) {
-            const key = `${nat}::${league.id}::${age}::${qual}`;
+    if (isWorldStar) {
+      // WORLD STAR: group by (Nat, League, Age) only — no OVR dimension
+      for (const nat of filteredNats) {
+        for (const league of leagues) {
+          for (const age of filteredAges) {
+            const key = `${nat}::${league.id}::${age}::+100`;
             if (!combos.has(key)) {
-              combos.set(key, { nat, leagueId: league.id, leagueName: league.name, age, qual, targetIds: new Set() });
+              combos.set(key, { nat, leagueId: league.id, leagueName: league.name, age, qual: '+100', targetIds: new Set() });
             }
             combos.get(key)!.targetIds.add(p.id);
+          }
+        }
+      }
+    } else {
+      // NORMAL: group by (Nat, League, Age, OVR)
+      const quals = [getOSMQualityRange(p.overall)];
+      const filteredQuals = extraFilters?.qualityRange ? [extraFilters.qualityRange] : quals;
+
+      for (const nat of filteredNats) {
+        for (const league of leagues) {
+          for (const age of filteredAges) {
+            for (const qual of filteredQuals) {
+              const key = `${nat}::${league.id}::${age}::${qual}`;
+              if (!combos.has(key)) {
+                combos.set(key, { nat, leagueId: league.id, leagueName: league.name, age, qual, targetIds: new Set() });
+              }
+              combos.get(key)!.targetIds.add(p.id);
+            }
           }
         }
       }
     }
   }
 
-  // --- STEP 3: Validate combos and calculate noise ---
-  // A combo is valid only if it still captures ALL activeTargets.
-  const validCandidates = [...combos.values()].filter(c => {
-    const coveredPos = new Set(candidates.filter(p => c.targetIds.has(p.id)).map(p => p.detailed_position));
+  // --- STEP 3: Keep only combos that cover ALL target positions ---
+  const validCombos = [...combos.values()].filter(c => {
+    const coveredPos = new Set(candidates.filter((p: any) => c.targetIds.has(p.id)).map((p: any) => p.detailed_position));
     return activeTargets.every(tp => coveredPos.has(tp));
   });
 
+  if (validCombos.length === 0) return [];
+
+  // --- STEP 4: Calculate real pool size for each combo ---
   const results: any[] = [];
   const BATCH_SIZE = 20;
 
-  for (let i = 0; i < validCandidates.length; i += BATCH_SIZE) {
-    const batch = validCandidates.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < validCombos.length; i += BATCH_SIZE) {
+    const batch = validCombos.slice(i, i + BATCH_SIZE);
     await Promise.all(batch.map(async (c) => {
       const [minA, maxA] = getAgeBounds(c.age);
       const [minQ, maxQ] = getQualityBounds(c.qual);
 
-      let poolQuery = supabase.from('players').select('id, name, overall, detailed_position');
-      if (c.nat !== 'Cualquiera') poolQuery = poolQuery.eq('nationality', c.nat);
-      if (c.leagueId !== 'Cualquiera') poolQuery = poolQuery.eq('clubs.league_id', c.leagueId);
+      let poolQuery = supabase.from('players').select('id, name, overall, detailed_position, clubs!inner(league_id)');
+      poolQuery = poolQuery.eq('nationality', c.nat);
+      poolQuery = poolQuery.eq('clubs.league_id', c.leagueId);
       if (c.age !== 'Cualquiera') poolQuery = poolQuery.gte('age', minA).lte('age', maxA);
-      if (c.qual !== 'Cualquiera') poolQuery = poolQuery.gte('overall', minQ).lte('overall', maxQ);
-      
+      // World Star: no OVR filter on pool
+      if (c.qual !== '+100') poolQuery = poolQuery.gte('overall', minQ).lte('overall', maxQ);
+
       poolQuery = poolQuery.ilike('position', `%${mainPos}%`);
 
       const { data: pool } = await poolQuery;
@@ -192,32 +207,33 @@ export async function discoverCombosForPositions(
         },
         probability: prob,
         totalMatching: pool.length,
-        noiseCount: pool.length - activeTargets.length,
+        noiseCount: pool.length - pool.filter((p: any) => activeTargets.includes(p.detailed_position)).length,
         matchingPlayers: pool.slice(0, 30),
         coveredPositions: activeTargets,
       });
     }));
   }
 
-  return results
-    .sort((a, b) => {
-      // Priority for high prob + broad quality if possible (better for World Stars)
-      if (a.probability > 90 && b.probability > 90) {
-          if (a.filters.qualityRange === 'Cualquiera' && b.filters.qualityRange !== 'Cualquiera') return -1;
-          if (b.filters.qualityRange === 'Cualquiera' && a.filters.qualityRange !== 'Cualquiera') return 1;
-      }
-      return b.probability - a.probability || a.totalMatching - b.totalMatching;
-    })
+  // --- STEP 5: Deduplicate and sort ---
+  const seen = new Set<string>();
+  const deduped = results.filter(r => {
+    const key = `${r.filters.league}::${r.filters.ageRange}::${r.filters.qualityRange}::${r.totalMatching}::${r.probability}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return deduped
+    .sort((a, b) => b.probability - a.probability || a.totalMatching - b.totalMatching)
     .slice(0, 30);
 }
 
 export async function findOptimalCombination(supabase: any, targetPlayers: any[]) {
   if (targetPlayers.length === 0) return null;
-  // (Simplified for player mode, usually one specific target)
   const p = targetPlayers[0];
   const ageR = getOSMAgeRange(p.age);
   const qualR = getOSMQualityRange(p.overall);
-  
+
   return {
     filters: { pos: p.position, nationality: p.nationality, ageRange: ageR, qualityRange: qualR, league: p.clubs?.leagues?.name || '' },
     probability: 100,
