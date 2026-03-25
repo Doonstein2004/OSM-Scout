@@ -17,10 +17,20 @@ import { supabase } from './lib/supabase';
 import './lib/i18n';
 import { useTranslation } from 'react-i18next';
 import { findOptimalCombination, discoverCombosForPositions } from './lib/scouter';
+import { getFlag } from './lib/flags';
 import './global.css';
 
 export default function App() {
   const { t, i18n } = useTranslation();
+  
+  // Desactivar logs en producción para mayor velocidad
+  if (!__DEV__) {
+    console.log = () => {};
+    console.info = () => {};
+    console.warn = () => {};
+    console.error = () => {};
+  }
+
   const [activeTab, setActiveTab] = useState('scout');
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -250,11 +260,15 @@ export default function App() {
               <Text className="text-3xl font-black text-white tracking-tighter">OSM SCOUT <Text className="text-emerald-400">PRO</Text></Text>
               <Text className="text-slate-400 text-xs font-medium uppercase tracking-[2px]">{t('smart_scout_desc')}</Text>
             </View>
-            <TouchableOpacity onPress={() => i18n.changeLanguage(i18n.language === 'es' ? 'en' : 'es')}>
-              <View className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl">
-                <Text className="text-white text-xs font-bold">{i18n.language.toUpperCase()}</Text>
-              </View>
-            </TouchableOpacity>
+            <View className="flex-row gap-2">
+              {[ { code: 'es', flag: '🇪🇸' }, { code: 'en', flag: '🇺🇸' }, { code: 'pt', flag: '🇧🇷' } ].map(lang => (
+                <TouchableOpacity key={lang.code} onPress={() => i18n.changeLanguage(lang.code)}>
+                  <View className={`border px-2 py-1 rounded-xl ${i18n.language === lang.code ? 'bg-emerald-500 border-emerald-400' : 'bg-white/5 border-white/10'}`}>
+                    <Text className="text-white text-xs font-bold">{lang.flag}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} variant="primary" style={{ flex: 1, width: '100%' }}>
@@ -289,7 +303,7 @@ export default function App() {
                             <TouchableOpacity key={pos} onPress={() => toggleArrayItem(setFilterPos, pos, true)}>
                                 <View className={`border rounded-xl h-10 px-3 justify-center items-center ${filterPos.includes(pos) ? 'bg-indigo-500/20 border-indigo-500/60 shadow-lg shadow-indigo-500/20' : 'bg-white/5 border-white/10'}`}>
                                     <Text className={`${filterPos.includes(pos) ? 'text-indigo-300 font-bold' : 'text-slate-300'} text-xs`}>
-                                        {pos === 'Forward' ? '🎯 Delanteros' : pos === 'Midfielder' ? '⚙️ Medios' : pos === 'Defender' ? '🛡️ Defensas' : '🧤 Porteros'}
+                                        {pos === 'Forward' ? '🎯 ' + t('Forward') : pos === 'Midfielder' ? '⚙️ ' + t('Midfielder') : pos === 'Defender' ? '🛡️ ' + t('Defender') : '🧤 ' + t('Goalkeeper')}
                                     </Text>
                                 </View>
                             </TouchableOpacity>
@@ -309,7 +323,7 @@ export default function App() {
                                     <TouchableOpacity key={specPos} onPress={() => toggleArrayItem(setFilterDetailedPos, specPos)}>
                                         <View className={`border rounded-lg h-8 px-4 justify-center items-center ${filterDetailedPos.includes(specPos) ? 'bg-indigo-400/30 border-indigo-400 shadow-md' : 'bg-transparent border-indigo-500/30'}`}>
                                             <Text className={`${filterDetailedPos.includes(specPos) ? 'text-white font-black' : 'text-indigo-300/70 font-medium'} text-[10px]`}>
-                                                {specPos}
+                                                {t(specPos)}
                                             </Text>
                                         </View>
                                     </TouchableOpacity>
@@ -381,10 +395,12 @@ export default function App() {
                         <View className="flex-row gap-2 mb-2 w-full">
                             <TouchableOpacity 
                                 className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-3"
-                                onPress={() => openSelector("Nacionalidad", nationalities, setFilterNationality, (v) => v)}
+                                onPress={() => openSelector("Nacionalidad", nationalities, setFilterNationality, (v) => `${getFlag(v)} ${v}`)}
                             >
                                 <Text className="text-slate-400 text-[10px] font-bold mb-1">NACIONALIDAD</Text>
-                                <Text className="text-white font-bold" numberOfLines={1}>{filterNationality || "Cualquiera 🌍"}</Text>
+                                <Text className="text-white font-bold" numberOfLines={1}>
+                                    {filterNationality ? `${getFlag(filterNationality)} ${filterNationality}` : "Cualquiera 🌍"}
+                                </Text>
                             </TouchableOpacity>
                             
                             <TouchableOpacity 
@@ -480,8 +496,8 @@ export default function App() {
                                               </View>
                                               <View className="flex-1 pr-1">
                                                   <Text className="text-white font-bold text-lg leading-tight" numberOfLines={1}>{player.name}</Text>
-                                                  <Text className="text-emerald-300 font-black text-[10px] uppercase my-0.5 tracking-wider">{player.detailed_position} • {player.age} {t('years')}</Text>
-                                                  <Text className="text-slate-400 text-[10px]" numberOfLines={1}>{player.nationality}</Text>
+                                                  <Text className="text-emerald-300 font-black text-[10px] uppercase my-0.5 tracking-wider">{t(player.detailed_position)} • {player.age} {t('years')}</Text>
+                                                  <Text className="text-slate-400 text-[10px]" numberOfLines={1}>{getFlag(player.nationality)} {player.nationality}</Text>
                                               </View>
                                           </View>
                                           <View className="items-end justify-center">
@@ -603,7 +619,7 @@ export default function App() {
                                             return acc;
                                         }, {})).map(([pos, count]: [string, any]) => (
                                             <View key={pos} className="bg-amber-500/20 border border-amber-500/30 px-2 py-1 rounded-md">
-                                                <Text className="text-amber-200 font-black text-[10px]">{count} {pos}</Text>
+                                                <Text className="text-amber-200 font-black text-[10px]">{count} {t(pos)}</Text>
                                             </View>
                                         ))}
                                     </View>
@@ -635,8 +651,8 @@ export default function App() {
                      
                      {combinationResult && !combinationResult.filters && (
                          <Animated.View entering={FadeInUp} className="mt-6 p-6 bg-red-500/10 border border-red-500/20 rounded-3xl w-full">
-                            <Text className="text-red-400 font-bold text-center text-sm">Incompatible</Text>
-                            <Text className="text-red-300/80 text-xs text-center mt-2 leading-relaxed">Los jugadores seleccionados son de mundos totalmente opuestos. No comparten suficientes rasgos (Edad, Nacionalidad, Calidad) para caber en la misma búsqueda del Ojeador.</Text>
+                            <Text className="text-red-400 font-bold text-center text-sm">{t('incompatible')}</Text>
+                            <Text className="text-red-300/80 text-xs text-center mt-2 leading-relaxed">{t('incompatible_desc')}</Text>
                          </Animated.View>
                      )}
                    </Animated.View>
@@ -655,10 +671,10 @@ export default function App() {
                         <View className="flex-row gap-2 mb-4">
                            <TouchableOpacity 
                                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2"
-                               onPress={() => openSelector("Nacionalidad", nationalities, setSmartNationality, (v) => v)}
+                               onPress={() => openSelector("Nacionalidad", nationalities, setSmartNationality, (v) => `${getFlag(v)} ${v}`)}
                            >
                                <Text className="text-slate-500 text-[8px] font-bold mb-0.5">NACIONALIDAD</Text>
-                               <Text className="text-white font-bold text-xs" numberOfLines={1}>{smartNationality || "Cualquiera"}</Text>
+                               <Text className="text-white font-bold text-xs" numberOfLines={1}>{smartNationality ? `${getFlag(smartNationality)} ${smartNationality}` : "Cualquiera"}</Text>
                            </TouchableOpacity>
                            
                            <TouchableOpacity 
@@ -683,7 +699,7 @@ export default function App() {
                              {['ST', 'RW', 'LW', 'CAM', 'CM', 'CDM', 'RM', 'LM', 'CB', 'RB', 'LB'].map(pos => (
                                  <TouchableOpacity key={pos} onPress={() => setTargetPositions(prev => [...prev, pos])}>
                                      <View className="border border-indigo-500/30 bg-indigo-500/10 h-8 px-4 justify-center items-center rounded-lg">
-                                         <Text className="text-indigo-300 font-bold text-xs">{pos}</Text>
+                                         <Text className="text-indigo-300 font-bold text-xs">{t(pos)}</Text>
                                      </View>
                                  </TouchableOpacity>
                              ))}
@@ -695,7 +711,7 @@ export default function App() {
                                     {targetPositions.map((p, i) => (
                                         <TouchableOpacity key={i} onPress={() => removeTargetPos(i)}>
                                             <View className="bg-emerald-500/20 border border-emerald-500/30 py-1 px-3 rounded-full">
-                                                <Text className="text-emerald-400 font-bold text-xs">{p} ✕</Text>
+                                                <Text className="text-emerald-400 font-bold text-xs">{t(p)} ✕</Text>
                                             </View>
                                         </TouchableOpacity>
                                     ))}
@@ -704,7 +720,7 @@ export default function App() {
                                   {calculating ? (
                                       <Spinner size="md" className="text-white" />
                                   ) : (
-                                      <Button.Label className="text-white font-black text-xs tracking-widest">MINAR BASE DE DATOS 🪄</Button.Label>
+                                      <Button.Label className="text-white font-black text-xs tracking-widest">{t('mining_db').toUpperCase()} 🪄</Button.Label>
                                   )}
                                 </Button>
                             </Animated.View>
@@ -734,7 +750,7 @@ export default function App() {
                                                 <Text className="text-emerald-400/70 text-[9px] font-black uppercase tracking-widest w-full">✅ Cubre:</Text>
                                                 {trip.coveredPositions.map((pos: string) => (
                                                     <View key={pos} className="bg-emerald-500/30 border border-emerald-500/50 px-2 py-0.5 rounded-full">
-                                                        <Text className="text-emerald-300 font-black text-[10px]">{pos}</Text>
+                                                        <Text className="text-emerald-300 font-black text-[10px]">{t(pos)}</Text>
                                                     </View>
                                                 ))}
                                             </View>
@@ -745,7 +761,7 @@ export default function App() {
                                                  if (!val || val === '') return null;
                                                  return (
                                                      <View key={key} className="bg-indigo-500/20 px-2 py-1 rounded">
-                                                         <Text className="text-indigo-300 font-bold text-[10px] uppercase">{val}</Text>
+                                                         <Text className="text-indigo-300 font-bold text-[10px] uppercase">{key === 'nationality' ? getFlag(val) + ' ' + val : (key === 'pos' ? t(val) : val)}</Text>
                                                      </View>
                                                  );
                                              })}
@@ -759,12 +775,12 @@ export default function App() {
                                                 }, {})).map(([pos, c]: [string, any]) => (
                                                     <View key={pos} className="flex-row items-center">
                                                         <Text className="text-amber-300 font-black text-xs">{c} </Text>
-                                                        <Text className="text-slate-400 text-xs">{pos}</Text>
+                                                        <Text className="text-slate-400 text-xs">{t(pos)}</Text>
                                                     </View>
                                                 ))}
                                             </View>
                                             {trip.matchingPlayers.map((p: any) => (
-                                                <Text key={p.id} className="text-white/60 text-[10px]">• {p.name} ({p.overall}) - {p.detailed_position}</Text>
+                                                <Text key={p.id} className="text-white/60 text-[10px]">• {p.name} ({p.overall}) - {t(p.detailed_position)}</Text>
                                             ))}
                                        </View>
                                    </View>

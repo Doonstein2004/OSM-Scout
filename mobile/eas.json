@@ -15,9 +15,21 @@
         "buildType": "apk"
       }
     },
-    "production": {}
+    "production": {
+      "node": "20.18.3",
+      "pnpm": "10.4.1",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "internal",
+        "serviceAccountKeyPath": "./google-service-account-key.json"
+      }
+    }
   }
 }
