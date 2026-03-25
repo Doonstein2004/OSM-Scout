@@ -46,11 +46,42 @@ export function getQualityBounds(range: string): [number, number] {
   return [0, 200];
 }
 
+const posMap: any = {
+    'ST': 'Forward', 'GOL': 'Forward', 'PL': 'Forward',
+    'RW': 'Forward', 'ED': 'Forward',
+    'LW': 'Forward', 'EI': 'Forward', 'EE': 'Forward',
+    'CAM': 'Midfielder', 'CCA': 'Midfielder', 'MCO': 'Midfielder',
+    'CM': 'Midfielder', 'CC': 'Midfielder', 'MC': 'Midfielder',
+    'CDM': 'Midfielder', 'CCD': 'Midfielder', 'MCD': 'Midfielder',
+    'RM': 'Midfielder', 'CD': 'Midfielder', 'MD': 'Midfielder',
+    'LM': 'Midfielder', 'CI': 'Midfielder', 'ME': 'Midfielder',
+    'CB': 'Defender', 'DC': 'Defender',
+    'RB': 'Defender', 'DD': 'Defender',
+    'LB': 'Defender', 'DI': 'Defender', 'DE': 'Defender',
+    'GK': 'Goalkeeper', 'POR': 'Goalkeeper', 'GR': 'Goalkeeper'
+};
+
+const reversePosMap: any = {
+  'GOL': 'ST', 'PL': 'ST',
+  'ED': 'RW',
+  'EI': 'LW', 'EE': 'LW',
+  'CCA': 'CAM', 'MCO': 'CAM',
+  'CC': 'CM', 'MC': 'CM',
+  'CCD': 'CDM', 'MCD': 'CDM',
+  'CD': 'RM', 'MD': 'RM',
+  'CI': 'LM', 'ME': 'LM',
+  'DC': 'CB',
+  'DD': 'RB',
+  'DI': 'LB', 'DE': 'LB',
+  'POR': 'GK', 'GR': 'GK'
+};
+
+function toDBPos(uiPos: string): string {
+  return reversePosMap[uiPos] || uiPos;
+}
+
 function toGeneralPos(specPos: string): string {
-  if (['ST', 'RW', 'LW'].includes(specPos)) return 'Forward';
-  if (['CAM', 'CM', 'CDM', 'RM', 'LM'].includes(specPos)) return 'Midfielder';
-  if (['CB', 'RB', 'LB'].includes(specPos)) return 'Defender';
-  return 'Goalkeeper';
+  return posMap[specPos] || 'Unknown';
 }
 
 function pAtLeastOne(total: number, targetCount: number): number {
@@ -179,22 +210,32 @@ export async function discoverCombosForPositions(
   for (let i = 0; i < validCombos.length; i += BATCH_SIZE) {
     const batch = validCombos.slice(i, i + BATCH_SIZE);
     await Promise.all(batch.map(async (c) => {
-      const [minA, maxA] = getAgeBounds(c.age);
-      const [minQ, maxQ] = getQualityBounds(c.qual);
+      // Calculamos el pool total real de esa combinación (ruido)
+      // Usamos inner joins para filtrar por la liga del club del jugador
+      let poolQuery = supabase.from('players')
+          .select('*, clubs!inner(league_id)', { count: 'exact' })
+          .eq('nationality', c.nat)
+          .eq('clubs.league_id', c.leagueId);
 
-      let poolQuery = supabase.from('players').select('id, name, overall, detailed_position, clubs!inner(league_id)');
-      poolQuery = poolQuery.eq('nationality', c.nat);
-      poolQuery = poolQuery.eq('clubs.league_id', c.leagueId);
-      if (c.age !== 'Cualquiera') poolQuery = poolQuery.gte('age', minA).lte('age', maxA);
-      // World Star: no OVR filter on pool
-      if (c.qual !== '+100') poolQuery = poolQuery.gte('overall', minQ).lte('overall', maxQ);
+      if (c.age === '<20') poolQuery = poolQuery.lt('age', 20);
+      else if (c.age === '20-24') poolQuery = poolQuery.gte('age', 20).lte('age', 24);
+      else if (c.age === '25-29') poolQuery = poolQuery.gte('age', 25).lte('age', 29); // Corrected upper bound
+      else if (c.age === '30-34') poolQuery = poolQuery.gte('age', 30).lte('age', 34);
+      else if (c.age === '>34') poolQuery = poolQuery.gt('age', 34);
+
+      if (!isWorldStar) {
+          const [min, max] = getQualityBounds(c.qual); // Use getQualityBounds for robustness
+          poolQuery = poolQuery.gte('overall', min).lte('overall', max);
+      }
 
       poolQuery = poolQuery.ilike('position', `%${mainPos}%`);
 
-      const { data: pool } = await poolQuery;
+      const { count: poolSize, data: pool } = await poolQuery;
       if (!pool || pool.length === 0) return;
 
-      const prob = calculateSmartProbability(pool, activeTargets);
+      const dbTargets = activeTargets.map(toDBPos);
+      const matchingCount = pool.filter((p: any) => dbTargets.includes(p.detailed_position)).length;
+      const prob = calculateSmartProbability(pool, dbTargets);
       if (prob < 2) return;
 
       results.push({
@@ -207,7 +248,7 @@ export async function discoverCombosForPositions(
         },
         probability: prob,
         totalMatching: pool.length,
-        noiseCount: pool.length - pool.filter((p: any) => activeTargets.includes(p.detailed_position)).length,
+        noiseCount: pool.length - matchingCount,
         matchingPlayers: pool.slice(0, 30),
         coveredPositions: activeTargets,
       });
