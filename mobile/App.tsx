@@ -258,7 +258,7 @@ export default function App() {
           <View className="px-6 pt-6 pb-4 border-b border-white/10 flex-row justify-between items-center bg-slate-950">
             <View>
               <Text className="text-3xl font-black text-white tracking-tighter">OSM SCOUT <Text className="text-emerald-400">PRO</Text></Text>
-              <Text className="text-slate-400 text-xs font-medium uppercase tracking-[2px]">{t('smart_scout_desc')}</Text>
+              <Text className="text-slate-400 text-[10px] font-black uppercase tracking-[2px]">{t('smart_scout_desc')}</Text>
             </View>
             <View className="flex-row gap-2">
               {[ { code: 'es', flag: '🇪🇸' }, { code: 'en', flag: '🇺🇸' }, { code: 'pt', flag: '🇧🇷' } ].map(lang => (
@@ -272,17 +272,20 @@ export default function App() {
           </View>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} variant="primary" style={{ flex: 1, width: '100%' }}>
-            <Tabs.List className="px-6 py-4 bg-slate-950 w-full mb-2 border-b border-white/5">
+            <Tabs.List className="px-6 py-4 bg-slate-950 w-full mb-0 border-b border-white/5">
               <Tabs.ScrollView>
                 <Tabs.Indicator className="bg-emerald-500 rounded-xl" />
                 <Tabs.Trigger value="scout" className="px-4 py-2">
-                  <Tabs.Label className="font-bold">{t('scout').toUpperCase()}</Tabs.Label>
+                  <Tabs.Label className={`font-black text-xs ${activeTab === 'scout' ? 'text-white' : 'text-slate-500'}`}>{t('scout').toUpperCase()}</Tabs.Label>
                 </Tabs.Trigger>
                 <Tabs.Trigger value="smart" className="px-4 py-2 ml-2">
-                  <Tabs.Label className="font-black text-emerald-400">SMART {targetPlayers.length > 0 && `(${targetPlayers.length})`}</Tabs.Label>
+                  <Tabs.Label className={`font-black text-xs ${activeTab === 'smart' ? 'text-emerald-400' : 'text-emerald-900'}`}>SMART {targetPlayers.length > 0 && `(${targetPlayers.length})`}</Tabs.Label>
                 </Tabs.Trigger>
                 <Tabs.Trigger value="leagues" className="px-4 py-2 ml-2">
-                  <Tabs.Label className="font-bold">{t('leagues').toUpperCase()}</Tabs.Label>
+                  <Tabs.Label className={`font-black text-xs ${activeTab === 'leagues' ? 'text-white' : 'text-slate-500'}`}>{t('leagues').toUpperCase()}</Tabs.Label>
+                </Tabs.Trigger>
+                <Tabs.Trigger value="tutorial" className="px-4 py-2 ml-2">
+                  <Tabs.Label className={`font-black text-xs ${activeTab === 'tutorial' ? 'text-amber-400' : 'text-amber-900'}`}>{t('tutorials').toUpperCase()}</Tabs.Label>
                 </Tabs.Trigger>
               </Tabs.ScrollView>
             </Tabs.List>
@@ -293,11 +296,11 @@ export default function App() {
                   
                   {/* HERO FILTERS SECTION */}
                   <View className="px-4 py-4 bg-[#0a0f26] border-b border-indigo-500/10 mb-4 rounded-b-3xl">
-                    <Text className="text-white text-lg font-black mb-1">Criterios del Ojeador</Text>
-                    <Text className="text-slate-400 text-xs mb-4">Puedes activar MÚLTIPLES opciones a la vez (Multiselect)</Text>
+                    <Text className="text-white text-lg font-black mb-1">{t('scout_criteria')}</Text>
+                    <Text className="text-slate-400 text-xs mb-4">{t('multiselect_hint')}</Text>
                     
                     {/* Position Filter (Horizontal) */}
-                    <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2 pl-1">POSICIÓN GENERAL</Text>
+                    <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2 pl-1">{t('general_position')}</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-2" contentContainerStyle={{ gap: 8, paddingRight: 20 }}>
                         {['Forward', 'Midfielder', 'Defender', 'Goalkeeper'].map(pos => (
                             <TouchableOpacity key={pos} onPress={() => toggleArrayItem(setFilterPos, pos, true)}>
@@ -313,7 +316,7 @@ export default function App() {
                     {/* Specific Position Filter based on Selected General Position */}
                     {(filterPos.length > 0 && !filterPos.includes('Goalkeeper') || filterPos.length > 1) && (
                         <Animated.View entering={FadeInUp} className="mb-4">
-                            <Text className="text-indigo-400/50 text-[10px] font-black uppercase tracking-widest mb-2 pl-2">ROL ESPECÍFICO (OPCIONAL)</Text>
+                            <Text className="text-indigo-400/50 text-[10px] font-black uppercase tracking-widest mb-2 pl-2">{t('specific_role')}</Text>
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 20 }}>
                                 {Array.from(new Set(filterPos.flatMap(p => 
                                   p === 'Forward' ? ['ST', 'RW', 'LW'] :
@@ -335,7 +338,7 @@ export default function App() {
                     {/* Exact Filters (Free Inputs) */}
                     <View className="flex-row gap-2 mb-4 w-full px-1">
                         <View className="flex-1">
-                           <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2">EDAD EXACTA (LIBRE)</Text>
+                           <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2">{t('exact_age')}</Text>
                            <SearchField className="rounded-xl border-white/10 bg-white/5 h-10 w-full">
                                <Input 
                                  placeholder="Ej: 21" 
@@ -347,7 +350,7 @@ export default function App() {
                            </SearchField>
                         </View>
                         <View className="flex-1">
-                           <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2">MEDIA EXACTA (LIBRE)</Text>
+                           <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2">{t('exact_quality')}</Text>
                            <SearchField className="rounded-xl border-white/10 bg-white/5 h-10 w-full">
                                <Input 
                                  placeholder="Ej: 82" 
@@ -361,7 +364,7 @@ export default function App() {
                     </View>
 
                     {/* Age Filter (Horizontal) */}
-                    <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2 pl-1">EDAD DE LA PROMESA</Text>
+                    <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2 pl-1">{t('age_promise')}</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4" contentContainerStyle={{ gap: 8, paddingRight: 20 }}>
                         {['<20', '20-24', '25-29', '30-34', '>34'].map(age => (
                             <TouchableOpacity key={age} onPress={() => toggleArrayItem(setFilterAge, age)}>
@@ -375,7 +378,7 @@ export default function App() {
                     </ScrollView>
 
                     {/* Quality Filter (Horizontal) */}
-                    <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2 pl-1">RANGO DE CALIDAD (OVERALL)</Text>
+                    <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2 pl-1">{t('quality_range')}</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-6" contentContainerStyle={{ gap: 8, paddingRight: 20 }}>
                         {['+100', '85-99', '80-84', '75-79', '70-74', '60-69', '50-59'].map(qual => (
                             <TouchableOpacity key={qual} onPress={() => toggleArrayItem(setFilterQuality, qual)}>
@@ -390,25 +393,25 @@ export default function App() {
                     
                     {/* Database Specific Options (Nationality, League, Club) */}
                     <View className="mb-4 bg-black/20 p-3 rounded-2xl border border-white/5">
-                        <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3 pl-1">OPCIONES ESPECÍFICAS OBLIGATORIAS OSM</Text>
+                        <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3 pl-1">{t('osm_options')}</Text>
                         
                         <View className="flex-row gap-2 mb-2 w-full">
                             <TouchableOpacity 
                                 className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-3"
-                                onPress={() => openSelector("Nacionalidad", nationalities, setFilterNationality, (v) => `${getFlag(v)} ${v}`)}
+                                onPress={() => openSelector(t('nationality'), nationalities, setFilterNationality, (v) => `${getFlag(v)} ${v}`)}
                             >
-                                <Text className="text-slate-400 text-[10px] font-bold mb-1">NACIONALIDAD</Text>
+                                <Text className="text-slate-400 text-[10px] font-bold mb-1">{t('nationality').toUpperCase()}</Text>
                                 <Text className="text-white font-bold" numberOfLines={1}>
-                                    {filterNationality ? `${getFlag(filterNationality)} ${filterNationality}` : "Cualquiera 🌍"}
+                                    {filterNationality ? `${getFlag(filterNationality)} ${filterNationality}` : t('any_nat')}
                                 </Text>
                             </TouchableOpacity>
                             
                             <TouchableOpacity 
                                 className="flex-[1.5] bg-white/5 border border-white/10 rounded-xl px-3 py-3"
-                                onPress={() => openSelector("Liga de Fútbol", leagues, setFilterLeague, (l) => l.name)}
+                                onPress={() => openSelector(t('league'), leagues, setFilterLeague, (l) => l.name)}
                             >
-                                <Text className="text-slate-400 text-[10px] font-bold mb-1">LIGA</Text>
-                                <Text className="text-white font-bold" numberOfLines={1}>{filterLeague?.name || "Cualquiera 🏆"}</Text>
+                                <Text className="text-slate-400 text-[10px] font-bold mb-1">{t('league').toUpperCase()}</Text>
+                                <Text className="text-white font-bold" numberOfLines={1}>{filterLeague?.name || t('any_league')}</Text>
                             </TouchableOpacity>
                         </View>
                         
@@ -417,22 +420,22 @@ export default function App() {
                             onPress={() => {
                                 // Recommend filtering clubs by league if league is selected
                                 const clubList = filterLeague ? clubs.filter(c => c.league_id === filterLeague.id) : clubs;
-                                openSelector("Club Específico", clubList, setFilterClub, (c) => c.name);
+                                openSelector(t('club'), clubList, setFilterClub, (c) => c.name);
                             }}
                         >
-                            <Text className="text-slate-400 text-[10px] font-bold mb-1">CLUB</Text>
-                            <Text className="text-white font-bold" numberOfLines={1}>{filterClub?.name || "Cualquiera 🛡️"}</Text>
+                            <Text className="text-slate-400 text-[10px] font-bold mb-1">{t('club').toUpperCase()}</Text>
+                            <Text className="text-white font-bold" numberOfLines={1}>{filterClub?.name || t('any_club')}</Text>
                         </TouchableOpacity>
                     </View>
                     
                     <View className="flex-row gap-2 mt-2">
                         {(filterPos.length > 0 || filterAge.length > 0 || filterQuality.length > 0 || filterNationality || filterLeague || filterClub || filterExactAge || filterExactQuality) && (
                             <Button variant="outline" onPress={resetFilters} className="bg-transparent border border-white/10 h-12 rounded-2xl px-4 flex-[0.5]">
-                                <Button.Label className="text-white/70 font-bold text-xs">LIMPIAR</Button.Label>
+                                <Button.Label className="text-white/70 font-bold text-xs">{t('clean')}</Button.Label>
                             </Button>
                         )}
                         <Button onPress={fetchPlayers} className="flex-1 bg-emerald-500 h-12 rounded-2xl shadow-xl shadow-emerald-500/20">
-                            <Button.Label className="text-black font-black tracking-widest text-xs">BUSCAR JUGADORES 🔍</Button.Label>
+                            <Button.Label className="text-black font-black tracking-widest text-xs">{t('search_players')} 🔍</Button.Label>
                         </Button>
                     </View>
                   </View>
@@ -442,7 +445,7 @@ export default function App() {
                       <View className="flex-row gap-2 mb-4 w-full items-center">
                           <SearchField className="rounded-2xl border-white/10 bg-white/5 h-12 flex-1">
                             <Input 
-                              placeholder="Filtrar resultados (Ej: Messi)" 
+                              placeholder={t('filter_results')} 
                               value={search}
                               onChangeText={setSearch}
                               className="text-white text-xs flex-1"
@@ -458,20 +461,20 @@ export default function App() {
 
                       {/* Quick Info */}
                       <Text className="text-white/40 text-[10px] font-black tracking-widest uppercase mb-4 ml-2">
-                          {players.length} Resultados Obtenidos
+                          {players.length} {t('results_found')}
                       </Text>
 
                       {loading ? (
                         <View className="py-20 justify-center items-center">
                           <Spinner size="lg" className="text-emerald-500" />
-                          <Text className="text-white/50 mt-4 font-bold tracking-widest text-xs uppercase">Buscando...</Text>
+                          <Text className="text-white/50 mt-4 font-black tracking-widest text-[10px] uppercase">{t('loading')}</Text>
                         </View>
                       ) : (
                         <View>
                             {players.length === 0 && (
                                 <View className="items-center justify-center py-10 opacity-40">
                                     <Text className="text-5xl mb-3">👻</Text>
-                                    <Text className="text-white text-sm font-bold text-center">Nadie coincide con estos filtros.{'\n'}Comprueba tus opciones.</Text>
+                                    <Text className="text-white text-sm font-bold text-center leading-relaxed">{t('no_players_desc')}</Text>
                                 </View>
                             )}
                             {filteredPlayers.map((player: any, index: number) => (
@@ -507,11 +510,11 @@ export default function App() {
                                                       className="bg-emerald-500 h-9 px-3 rounded-full shadow-lg shadow-emerald-500/20"
                                                       onPress={() => setTargetPlayers(prev => [...prev, player])}
                                                   >
-                                                      <Button.Label className="text-black font-black text-[10px] tracking-wider">AÑADIR</Button.Label>
+                                                      <Button.Label className="text-black font-black text-[10px] tracking-wider">{t('add')}</Button.Label>
                                                   </Button>
                                               ) : (
                                                   <Button size="sm" className="bg-white/10 h-9 px-3 rounded-full shadow-none border border-white/10" onPress={() => removeTargetPlayer(player.id)}>
-                                                      <Button.Label className="text-white/50 font-bold text-[10px] tracking-wider">QUITAR</Button.Label>
+                                                      <Button.Label className="text-white/50 font-bold text-[10px] tracking-wider">{t('remove')}</Button.Label>
                                                   </Button>
                                               )}
                                           </View>
@@ -540,8 +543,8 @@ export default function App() {
 
             <Tabs.Content value="smart" style={{ flex: 1, width: '100%' }}>
                <ScrollView className="px-6 py-4 flex-1 w-full" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-                 <Text className="text-3xl font-black text-white mb-2">SC<Text className="text-emerald-400">O</Text>RE</Text>
-                 <Text className="text-slate-400 text-sm mb-4 leading-relaxed">Piratea los filtros de OSM descubriendo combinaciones perfectas.</Text>
+                 <Text className="text-3xl font-black text-white mb-2">{t('score').toUpperCase()}</Text>
+                 <Text className="text-slate-400 text-sm mb-4 leading-relaxed">{t('score_desc')}</Text>
                  
                  {/* Mode Toggle */}
                  <View className="flex-row bg-white/5 p-1 rounded-2xl mb-6">
@@ -549,13 +552,13 @@ export default function App() {
                          onPress={() => setSmartMode('players')}
                          className={`flex-1 py-3 items-center rounded-xl ${smartMode === 'players' ? 'bg-emerald-500 shadow-md' : ''}`}
                      >
-                         <Text className={`font-bold text-xs ${smartMode === 'players' ? 'text-black' : 'text-slate-400'}`}>POR JUGADOR</Text>
+                         <Text className={`font-black text-[10px] ${smartMode === 'players' ? 'text-black' : 'text-slate-500'}`}>{t('mode_player')}</Text>
                      </TouchableOpacity>
                      <TouchableOpacity 
                          onPress={() => setSmartMode('positions')}
                          className={`flex-1 py-3 items-center rounded-xl ${smartMode === 'positions' ? 'bg-emerald-500 shadow-md' : ''}`}
                      >
-                         <Text className={`font-bold text-xs ${smartMode === 'positions' ? 'text-black' : 'text-slate-400'}`}>POR POSICIÓN</Text>
+                         <Text className={`font-black text-[10px] ${smartMode === 'positions' ? 'text-black' : 'text-slate-500'}`}>{t('mode_position')}</Text>
                      </TouchableOpacity>
                  </View>
 
@@ -588,13 +591,13 @@ export default function App() {
                                 <Text className={`text-center font-black text-5xl ${combinationResult.noiseCount === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
                                 {Math.round(combinationResult.probability)}
                                 </Text>
-                                <Text className="text-center text-white/50 text-[10px] font-bold mt-1 tracking-widest">PROBABILIDAD</Text>
+                                <Text className="text-center text-white/50 text-[10px] font-black mt-1 tracking-widest">{t('probability')}</Text>
                             </View>
                          </View>
                          
                          <View className="gap-4 w-full">
                            <View className="bg-white/5 p-5 rounded-3xl border border-white/5 w-full">
-                             <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">Filtros Mágicos a usar en OSM:</Text>
+                             <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">{t('magic_filters')}</Text>
                              <View className="flex-row flex-wrap gap-2">
                                {Object.entries(combinationResult.filters).map(([key, val]: [string, any]) => (
                                  <View key={key} className="bg-indigo-500/20 border border-indigo-500/30 px-3 py-1 rounded-full">
@@ -605,14 +608,13 @@ export default function App() {
                            </View>
                            
                            <View className={`p-5 rounded-3xl border w-full ${combinationResult.noiseCount === 0 ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-amber-500/10 border-amber-500/20'}`}>
-                             <Text className={`text-[10px] font-black uppercase tracking-widest mb-2 ${combinationResult.noiseCount === 0 ? 'text-emerald-200/50' : 'text-amber-200/50'}`}>Análisis de la Base de Datos</Text>
+                             <Text className={`text-[10px] font-black uppercase tracking-widest mb-2 ${combinationResult.noiseCount === 0 ? 'text-emerald-200/50' : 'text-amber-200/50'}`}>{t('db_analysis')}</Text>
                              {combinationResult.noiseCount > 0 ? (
                                 <View>
                                     <Text className="text-amber-100 font-medium text-xs leading-relaxed mb-3">
-                                        Mira, si colocas estos filtros mágicos en OSM te encontrarás con una piscina de <Text className="font-black text-white">{combinationResult.totalMatching}</Text> posibles jugadores. 
-                                        Como tú solo quieres cazar {targetPlayers.length}, hay <Text className="text-amber-400 font-black">{combinationResult.noiseCount}</Text> jugadores fantasma que el Ojeador podría traerte por error.
+                                        {t('pool_desc', { count: combinationResult.totalMatching, targets: targetPlayers.length, noise: combinationResult.noiseCount })}
                                     </Text>
-                                    <Text className="text-amber-300 font-bold text-xs mb-2">Desglose de Posiciones de los {combinationResult.totalMatching} jugadores:</Text>
+                                    <Text className="text-amber-300 font-bold text-xs mb-2">{t('db_analysis')} ({combinationResult.totalMatching}):</Text>
                                     <View className="flex-row flex-wrap gap-2 mb-4">
                                         {Object.entries(combinationResult.matchingPlayers.reduce((acc: any, p: any) => {
                                             acc[p.detailed_position] = (acc[p.detailed_position] || 0) + 1;
@@ -623,17 +625,24 @@ export default function App() {
                                             </View>
                                         ))}
                                     </View>
-                                    <Text className="text-amber-100 font-medium text-[10px] uppercase tracking-widest mb-2 opacity-50">LISTADO DE AMENAZAS Y OBJETIVOS:</Text>
+                                    <Text className="text-amber-100 font-medium text-[10px] uppercase tracking-widest mb-2 opacity-50">{t('threats_objectives')}</Text>
                                     {combinationResult.matchingPlayers.map((p: any) => {
                                         const isTarget = targetPlayers.find(t => t.id === p.id);
                                         return (
-                                            <View key={p.id} className={`flex-row justify-between items-center py-2 border-b border-white/5 ${isTarget ? 'bg-emerald-500/10 rounded-lg px-2 border-transparent' : 'px-2'}`}>
-                                                <Text className={`font-bold text-xs ${isTarget ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                                    {isTarget && "🎯 "}{p.name}
-                                                </Text>
-                                                <View className="flex-row gap-2">
-                                                    <Text className="text-white/40 font-bold text-[10px]">{p.overall} OVR</Text>
-                                                    <Text className="text-indigo-400 font-black text-[10px]">{p.detailed_position}</Text>
+                                            <View key={p.id} className={`flex-col py-2 border-b border-white/5 ${isTarget ? 'bg-emerald-500/10 rounded-lg px-2 border-transparent' : 'px-2'}`}>
+                                                <View className="flex-row justify-between items-center w-full">
+                                                    <Text className={`font-bold text-xs ${isTarget ? 'text-emerald-400' : 'text-slate-400'}`}>
+                                                        {isTarget && "🎯 "}{p.name}
+                                                    </Text>
+                                                    <View className="flex-row gap-2">
+                                                        <Text className="text-white/40 font-bold text-[10px]">{p.overall} OVR</Text>
+                                                        <Text className="text-indigo-300 font-black text-[10px]">{t(p.detailed_position)}</Text>
+                                                    </View>
+                                                </View>
+                                                <View className="flex-row gap-2 mt-1">
+                                                    <Text className="text-slate-500 text-[8px] uppercase font-bold">{t('age')}: <Text className="text-slate-300">{p.age}</Text></Text>
+                                                    <Text className="text-slate-500 text-[8px] uppercase font-bold">{t('team')}: <Text className="text-slate-300">{p.clubs?.name || '-'}</Text></Text>
+                                                    <Text className="text-slate-500 text-[8px] uppercase font-bold">{t('value')}: <Text className="text-emerald-500/60">{p.value_str || p.value}</Text></Text>
                                                 </View>
                                             </View>
                                         );
@@ -641,7 +650,7 @@ export default function App() {
                                 </View>
                              ) : (
                                 <Text className="text-emerald-100 font-medium text-xs leading-relaxed mb-3">
-                                    ¡PERIODO DE CAZA PERFECTO! Solo existen los <Text className="font-black text-emerald-400 w-full">{combinationResult.totalMatching}</Text> jugadores que seleccionaste en todo el mundo con estos filtros. Traerás tus objetivos con 100% de éxito garantizado.
+                                    {t('perfect_hunting')}
                                 </Text>
                              )}
                            </View>
@@ -659,42 +668,42 @@ export default function App() {
                  ) : (
                    <View className="py-20 items-center justify-center opacity-40 w-full">
                      <Text className="text-6xl mb-4">🔮</Text>
-                     <Text className="text-white text-center font-bold text-lg mb-2">Añade Jugadores</Text>
-                     <Text className="text-slate-400 text-center text-sm px-4 leading-relaxed">Ve a la pestaña Ojeador, añade de 1 a 3 jugadores a tu lista.</Text>
+                     <Text className="text-white text-center font-black text-lg mb-2">{t('target_players')}</Text>
+                     <Text className="text-slate-400 text-center text-sm px-4 leading-relaxed">{t('add_players_desc')}</Text>
                    </View>
                  )}
                  </View>
                  )}
                  {smartMode === 'positions' && (
                      <View>
-                        <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">FILTROS ADICIONALES (OPCIONAL)</Text>
+                        <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">{t('osm_options')}</Text>
                         <View className="flex-row gap-2 mb-4">
                            <TouchableOpacity 
                                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2"
-                               onPress={() => openSelector("Nacionalidad", nationalities, setSmartNationality, (v) => `${getFlag(v)} ${v}`)}
+                               onPress={() => openSelector(t('nationality'), nationalities, setSmartNationality, (v) => `${getFlag(v)} ${v}`)}
                            >
-                               <Text className="text-slate-500 text-[8px] font-bold mb-0.5">NACIONALIDAD</Text>
-                               <Text className="text-white font-bold text-xs" numberOfLines={1}>{smartNationality ? `${getFlag(smartNationality)} ${smartNationality}` : "Cualquiera"}</Text>
+                               <Text className="text-slate-500 text-[8px] font-bold mb-0.5">{t('nationality').toUpperCase()}</Text>
+                               <Text className="text-white font-bold text-xs" numberOfLines={1}>{smartNationality ? `${getFlag(smartNationality)} ${smartNationality}` : t('any')}</Text>
                            </TouchableOpacity>
                            
                            <TouchableOpacity 
                                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2"
-                               onPress={() => openSelector("Rango de Edad", ['<20', '20-24', '25-29', '30-34', '>34'], setSmartAgeRange, (v) => v)}
+                               onPress={() => openSelector(t('age_promise'), ['<20', '20-24', '25-29', '30-34', '>34'], setSmartAgeRange, (v) => v)}
                            >
-                               <Text className="text-slate-500 text-[8px] font-bold mb-0.5">EDAD</Text>
-                                <Text className="text-white font-bold text-xs" numberOfLines={1}>{smartAgeRange || "Cualquiera"}</Text>
+                               <Text className="text-slate-500 text-[8px] font-bold mb-0.5">{t('age').toUpperCase()}</Text>
+                                <Text className="text-white font-bold text-xs" numberOfLines={1}>{smartAgeRange || t('any')}</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity 
                                 className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2"
-                                                                 onPress={() => openSelector("Media (Calidad)", ['Cualquiera', '+100', '85-99', '80-84', '75-79', '70-74', '60-69', '50-59'], (v) => setSmartQualityRange(v === 'Cualquiera' ? null : v), (v) => v === '+100' ? '✨ +100 (Estrella)' : v)}
+                                onPress={() => openSelector(t('quality_range'), [t('any'), '+100', '85-99', '80-84', '75-79', '70-74', '60-69', '50-59'], (v) => setSmartQualityRange(v === t('any') ? null : v), (v) => v === '+100' ? '✨ +100' : v)}
 
                             >
-                                <Text className="text-slate-500 text-[8px] font-bold mb-0.5">MEDIA (OVR)</Text>
-                                <Text className="text-white font-bold text-xs" numberOfLines={1}>{smartQualityRange === '+100' ? "✨ +100 (Estrella)" : (smartQualityRange || "Cualquiera")}</Text>
+                                <Text className="text-slate-500 text-[8px] font-bold mb-0.5">OVR</Text>
+                                <Text className="text-white font-bold text-xs" numberOfLines={1}>{smartQualityRange === '+100' ? "✨ +100" : (smartQualityRange || t('any'))}</Text>
                             </TouchableOpacity>
                          </View>
-                         <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">CONSTRUYE LA MULTI-BÚSQUEDA</Text>
+                         <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">{t('target_positions').toUpperCase()}</Text>
                         <View className="flex-row flex-wrap gap-2 mb-4">
                              {['ST', 'RW', 'LW', 'CAM', 'CM', 'CDM', 'RM', 'LM', 'CB', 'RB', 'LB'].map(pos => (
                                  <TouchableOpacity key={pos} onPress={() => setTargetPositions(prev => [...prev, pos])}>
@@ -730,12 +739,12 @@ export default function App() {
                              <Animated.View entering={FadeInUp} className="w-full">
                                 {(generatedTrips as any).isRecommendation && (
                                     <View className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-3xl mb-4">
-                                        <Text className="text-amber-400 font-black text-xs mb-1">⚠️ SIN COMBINACIONES DIRECTAS</Text>
-                                        <Text className="text-amber-200/70 text-[10px]">No encontramos combos que cumplan todos los requisitos a la vez. Aquí tienes recomendaciones relajando los filtros:</Text>
+                                        <Text className="text-amber-400 font-black text-xs mb-1">⚠️ {t('no_direct_combos')}</Text>
+                                        <Text className="text-amber-200/70 text-[10px]">{t('no_direct_combos_desc')}</Text>
                                     </View>
                                 )}
                                 <Text className="text-white font-black text-lg mb-4">
-                                    {(generatedTrips as any).isRecommendation ? "Sugerencias de Búsqueda:" : `Los ${(generatedTrips as any[]).length} Mejores Viajes Posibles:`}
+                                    {(generatedTrips as any).isRecommendation ? "Sugerencias de Búsqueda:" : `${t('best_trips')}`}
                                 </Text>
                                 {(Array.isArray(generatedTrips) ? (generatedTrips as any[]) : (generatedTrips as any).recommendations).map((trip: any, tIdx: number) => (
                                    <View key={tIdx} className={`mb-6 p-5 rounded-3xl border w-full ${trip.probability >= 50 ? 'bg-emerald-500/10 border-emerald-500/20' : trip.probability >= 15 ? 'bg-amber-500/10 border-amber-500/20' : 'bg-white/5 border-white/10'}`}>
@@ -747,7 +756,7 @@ export default function App() {
                                        </View>
                                        {trip.coveredPositions && trip.coveredPositions.length > 0 && (
                                             <View className="flex-row gap-2 flex-wrap mb-3 mt-1">
-                                                <Text className="text-emerald-400/70 text-[9px] font-black uppercase tracking-widest w-full">✅ Cubre:</Text>
+                                                <Text className="text-emerald-400/70 text-[9px] font-black uppercase tracking-widest w-full">✅ {t('covers')}</Text>
                                                 {trip.coveredPositions.map((pos: string) => (
                                                     <View key={pos} className="bg-emerald-500/30 border border-emerald-500/50 px-2 py-0.5 rounded-full">
                                                         <Text className="text-emerald-300 font-black text-[10px]">{t(pos)}</Text>
@@ -768,7 +777,7 @@ export default function App() {
                                         </View>
 
                                        <View className="bg-black/20 p-3 rounded-xl border border-white/5">
-                                            <Text className="text-slate-400 text-[10px] uppercase tracking-widest font-bold mb-2">Pool Total: {trip.totalMatching} jugadores</Text>
+                                            <Text className="text-slate-400 text-[10px] uppercase tracking-widest font-bold mb-2">{t('pool_total')}: {trip.totalMatching} {t('players')}</Text>
                                             <View className="flex-row gap-2 flex-wrap pb-2 mb-2 border-b border-white/5">
                                                 {Object.entries(trip.matchingPlayers.reduce((acc:any, p:any) => {
                                                     acc[p.detailed_position] = (acc[p.detailed_position] || 0) + 1; return acc;
@@ -780,7 +789,14 @@ export default function App() {
                                                 ))}
                                             </View>
                                             {trip.matchingPlayers.map((p: any) => (
-                                                <Text key={p.id} className="text-white/60 text-[10px]">• {p.name} ({p.overall}) - {t(p.detailed_position)}</Text>
+                                                <View key={p.id} className="mb-1.5 border-b border-white/5 pb-1">
+                                                    <Text className="text-white/60 text-[10px] font-bold tracking-tight">• {p.name} ({p.overall}) - {t(p.detailed_position)}</Text>
+                                                    <View className="flex-row gap-2 mt-0.5 ml-2">
+                                                        <Text className="text-slate-600 text-[8px] uppercase font-bold">{t('age')}: <Text className="text-slate-400">{p.age}</Text></Text>
+                                                        <Text className="text-slate-600 text-[8px] uppercase font-bold">{t('team')}: <Text className="text-slate-400">{p.clubs?.name || '-'}</Text></Text>
+                                                        <Text className="text-slate-600 text-[8px] uppercase font-bold">{t('value')}: <Text className="text-emerald-500/40">{p.value_str || p.value}</Text></Text>
+                                                    </View>
+                                                </View>
                                             ))}
                                        </View>
                                    </View>
@@ -789,10 +805,51 @@ export default function App() {
                         )}
                         
                         {targetPositions.length > 0 && generatedTrips.length === 0 && !calculating && (
-                            <Text className="text-white/50 text-center my-10 italic">Pulsa MINAR para buscar combos universales.</Text>
+                            <Text className="text-white/50 text-center my-10 italic">{t('mining_desc')}</Text>
                         )}
                      </View>
                  )}
+               </ScrollView>
+            </Tabs.Content>
+
+            <Tabs.Content value="tutorial" style={{ flex: 1, width: '100%' }}>
+               <ScrollView className="px-6 py-4 flex-1 w-full" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+                 <Text className="text-3xl font-black text-white mb-2">{t('tutorials').toUpperCase()}</Text>
+                 <Text className="text-slate-400 text-sm mb-8 leading-relaxed">Aprende a dominar el mercado como un profesional.</Text>
+
+                 {/* Video/Animation Card Placeholder */}
+                 <View className="bg-slate-900 border border-white/5 rounded-3xl overflow-hidden mb-6">
+                    <View className="aspect-video bg-black/40 items-center justify-center">
+                        <Text className="text-4xl">🎬</Text>
+                        <View className="absolute bottom-4 left-4 right-4">
+                            <Text className="text-white font-black text-xs uppercase tracking-tighter">Próximamente: Tutorial Animado</Text>
+                        </View>
+                    </View>
+                    <View className="p-5">
+                        <Text className="text-white font-bold text-lg mb-2">¿Cómo funciona la Multi-Búsqueda?</Text>
+                        <Text className="text-slate-400 text-xs leading-relaxed">
+                            Descubre cómo enviar un solo ojeador para cazar hasta 3 posiciones distintas garantizando que no traiga basura.
+                        </Text>
+                    </View>
+                 </View>
+
+                 <View className="bg-white/5 p-6 rounded-3xl mb-4 border border-white/5">
+                    <Text className="text-emerald-400 font-black text-xs uppercase mb-3 tracking-widest">PASO 1</Text>
+                    <Text className="text-white font-bold text-base mb-1">Selecciona tus objetivos</Text>
+                    <Text className="text-slate-400 text-xs">Busca los jugadores que quieres en la pestaña Ojeador y añádelos a tu lista SMART.</Text>
+                 </View>
+
+                 <View className="bg-white/5 p-6 rounded-3xl mb-4 border border-white/5">
+                    <Text className="text-emerald-400 font-black text-xs uppercase mb-3 tracking-widest">PASO 2</Text>
+                    <Text className="text-white font-bold text-base mb-1">Calcula la probabilidad</Text>
+                    <Text className="text-slate-400 text-xs">Calcularemos qué filtros poner en OSM para que el ojeador solo traiga a ESOS jugadores y a nadie más.</Text>
+                 </View>
+
+                 <View className="bg-white/5 p-6 rounded-3xl mb-10 border border-white/5">
+                    <Text className="text-emerald-400 font-black text-xs uppercase mb-3 tracking-widest">PASO 3</Text>
+                    <Text className="text-white font-bold text-base mb-1">¡Caza con éxito!</Text>
+                    <Text className="text-slate-400 text-xs">Usa los "Filtros Mágicos" generados en tu juego de OSM y disfruta de tu nueva estrella.</Text>
+                 </View>
                </ScrollView>
             </Tabs.Content>
 
