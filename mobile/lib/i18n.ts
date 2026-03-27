@@ -81,7 +81,22 @@ const resources = {
       "incompatible_desc": "The selected players are too different. They don't share enough traits to fit in the same trip.",
       "team": "Team",
       "value": "Value",
-      "age": "Age"
+      "age": "Age",
+      "league_details": "League Details",
+      "avg_ovr": "Avg OVR",
+      "best_clubs": "Best Clubs",
+      "best_youngsters": "Top Youngsters",
+      "tour_next": "Next",
+      "tour_finish": "Got it!",
+      "tour_skip": "Skip",
+      "tour_welcome_title": "Welcome to Scout Pro!",
+      "tour_welcome_desc": "Master the OSM market with Artificial Intelligence.",
+      "tour_scout_title": "The Scouter",
+      "tour_scout_desc": "Find any player in the world with advanced multiselect filters.",
+      "tour_smart_title": "Smart Scout",
+      "tour_smart_desc": "Calculate the exact filters to guarantee your scouter brings exactly what you want.",
+      "tour_leagues_title": "League Analysis",
+      "tour_leagues_desc": "Compare leagues and find where the best bargains are hidden."
     }
   },
   es: {
@@ -163,7 +178,22 @@ const resources = {
       "incompatible_desc": "Los jugadores seleccionados son demasiado diferentes. No comparten suficientes rasgos para caber en el mismo viaje.",
       "team": "Equipo",
       "value": "Valor",
-      "age": "Edad"
+      "age": "Edad",
+      "league_details": "Detalles de la Liga",
+      "avg_ovr": "Media OVR",
+      "best_clubs": "Mejores Equipos",
+      "best_youngsters": "Promesas Top",
+      "tour_next": "Siguiente",
+      "tour_finish": "¡Entendido!",
+      "tour_skip": "Saltar",
+      "tour_welcome_title": "¡Bienvenido a Scout Pro!",
+      "tour_welcome_desc": "Domina el mercado de OSM con Inteligencia Artificial.",
+      "tour_scout_title": "El Ojeador",
+      "tour_scout_desc": "Busca cualquier jugador con filtros multi-selección avanzados.",
+      "tour_smart_title": "Smart Scout",
+      "tour_smart_desc": "Calcula los filtros exactos para garantizar que tu ojeador traiga lo que buscas.",
+      "tour_leagues_title": "Análisis de Ligas",
+      "tour_leagues_desc": "Compara ligas y encuentra dónde están los mejores chollos."
     }
   },
   pt: {
@@ -245,7 +275,22 @@ const resources = {
       "incompatible_desc": "Os jogadores selecionados são muito diferentes. Não compartilham traços suficientes para caber na mesma viagem.",
       "team": "Equipe",
       "value": "Valor",
-      "age": "Idade"
+      "age": "Idade",
+      "league_details": "Detalhes da Liga",
+      "avg_ovr": "Média OVR",
+      "best_clubs": "Melhores Clubes",
+      "best_youngsters": "Promessas Top",
+      "tour_next": "Próximo",
+      "tour_finish": "Entendi!",
+      "tour_skip": "Pular",
+      "tour_welcome_title": "Bem-vindo ao Scout Pro!",
+      "tour_welcome_desc": "Domine o mercado do OSM com Inteligência Artificial.",
+      "tour_scout_title": "O Olheiro",
+      "tour_scout_desc": "Encontre qualquer jogador do mundo com filtros avançados.",
+      "tour_smart_title": "Smart Scout",
+      "tour_smart_desc": "Calcule os filtros exatos para garantir que o olheiro traga o que você quer.",
+      "tour_leagues_title": "Análise de Ligas",
+      "tour_leagues_desc": "Compare ligas e descubra onde estão as melhores pechinchas."
     }
   }
 

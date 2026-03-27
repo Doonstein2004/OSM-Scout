@@ -1,5 +1,6 @@
 import os
 import time
+from datetime import datetime, timezone
 from supabase import create_client, Client
 from supabase.lib.client_options import ClientOptions
 import re
@@ -52,13 +53,13 @@ def get_supabase_client():
         return None
 
     try:
-        # Forzar opciones de tiempo de espera y personalización si fuera necesario
+        # Forzar opciones de tiempo de espera y personalización
         _supabase_client = create_client(
             url, 
             key,
             options=ClientOptions(
-                postgrest_client_timeout=20,
-                headers={"Connection": "close"} # Forzar cierre de conexión para evitar fugas de SSL
+                postgrest_client_timeout=30,
+                headers={"Connection": "close"}
             )
         )
         return _supabase_client
@@ -67,26 +68,35 @@ def get_supabase_client():
         return None
 
 def sync_to_supabase(data):
+    """
+    Sincronización Atómica:
+    1. Marca cada registro con un timestamp 'now'.
+    2. Upsert de datos nuevos.
+    3. Borra registros antiguos que no fueron actualizados (transferidos o eliminados).
+    """
     supabase = get_supabase_client()
     if not supabase:
         print("⚠️ Cliente Supabase no disponible. Saltando sincronización.")
         return
 
+    # Timestamp único para esta sesión de sincronización
+    now = datetime.now(timezone.utc).isoformat()
+
     for league in data:
-        # Upsert League
+        # UPSERT LEAGUE
         try:
             league_payload = {
                 "name": league["league_name"],
-                "country": league.get("country") # Ya lo extraeremos en main.py
+                "country": league.get("country"),
+                "updated_at": now
             }
-            # Usamos una función interna para poder aplicar el decorador
             @retry_supabase_call
             def upsert_league():
                 return supabase.table("leagues").upsert(league_payload, on_conflict="name").execute()
             
             l_res = upsert_league()
             if not l_res.data:
-                print(f"  ⚠️ No se pudo obtener ID para la liga: {league['league_name']}")
+                print(f"  ⚠️ No hay respuesta para liga: {league['league_name']}")
                 continue
             league_id = l_res.data[0]["id"]
         except Exception as e:
@@ -94,14 +104,15 @@ def sync_to_supabase(data):
             continue
         
         for club in league["clubs"]:
-            # Upsert Club
+            # UPSERT CLUB
             try:
                 club_payload = {
                     "league_id": league_id,
                     "name": club["name"],
                     "objective": int(re.sub(r'\D', '', str(club["objective"]))) if any(c.isdigit() for c in str(club["objective"])) else None,
                     "squad_value": parse_value_string(club["squad_value"]),
-                    "fixed_income": parse_value_string(club.get("fixed_income", "0"))
+                    "fixed_income": parse_value_string(club.get("fixed_income", "0")),
+                    "updated_at": now
                 }
                 
                 @retry_supabase_call
@@ -110,14 +121,14 @@ def sync_to_supabase(data):
                 
                 c_res = upsert_club()
                 if not c_res.data:
-                    print(f"    ⚠️ No se pudo obtener ID para el club: {club['name']}")
+                    print(f"    ⚠️ No hay respuesta para club: {club['name']}")
                     continue
                 club_id = c_res.data[0]["id"]
             except Exception as e:
                 print(f"    ❌ Error upsert club {club['name']}: {e}")
                 continue
             
-            # Upsert Players
+            # UPSERT PLAYERS
             players_payload = []
             for p in club["players"]:
                 players_payload.append({
@@ -131,7 +142,8 @@ def sync_to_supabase(data):
                     "defense": p["defense"],
                     "overall": p["overall"],
                     "value_amount": p["value_amount"],
-                    "value_str": p["value_str"]
+                    "value_str": p["value_str"],
+                    "updated_at": now
                 })
             
             if players_payload:
@@ -143,7 +155,18 @@ def sync_to_supabase(data):
                     res = upsert_players()
                     if res.data:
                         print(f"    ✅ {len(res.data)} jugadores sincronizados de {club['name']}.")
+                        
+                        # LIMPIEZA DE JUGADORES (Atomic Cleanup)
+                        # Borramos a los jugadores de este club que NO han sido actualizados en este run.
+                        # Esto resuelve el problema de las transferencias.
+                        @retry_supabase_call
+                        def cleanup_players():
+                            return supabase.table("players").delete().eq("club_id", club_id).lt("updated_at", now).execute()
+                        
+                        clean_res = cleanup_players()
+                        if clean_res.data and len(clean_res.data) > 0:
+                            print(f"    🧹 {len(clean_res.data)} jugadores antiguos/transferidos eliminados del club.")
                     else:
                         print(f"    ⚠️ Upsert de jugadores falló.")
                 except Exception as e:
-                    print(f"    ❌ Error upsert jugadores de {club['name']}: {e}")
+                    print(f"    ❌ Error procesando jugadores de {club['name']}: {e}")

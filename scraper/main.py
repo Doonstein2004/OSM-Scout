@@ -14,7 +14,7 @@ LEAGUES_TO_SKIP = [
     "Americas Cup 2024", "Asia 2007", "Asia 2024", "Boss Tournament", "Champions Cup 25/26",
     "Champions Cup RO16 25/26", "Club History A", "Club Stars", "Community League M",
     "Community League S", "Conference Cup 25/26", "England 19/20", "Europe 2000", "Europe 2024",
-    "Europe Cup 25/26",  "Fantasy 150", "Fantasy Tournament", "Knockout Royale", "LatAm Champions 2025",
+    "Europe Cup 25/26", "Friendly Battle",  "Fantasy 150", "Fantasy Tournament", "Knockout Royale", "LatAm Champions 2025",
     "Spain 09/10"
 ]
 
@@ -112,7 +112,7 @@ def parse_player_data(page):
 
 def scrape_osm(username, password):
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False) # Headless=False for debugging
+        browser = p.chromium.launch(headless=True) # Headless=False for debugging
         context = browser.new_context()
         page = context.new_page()
         
