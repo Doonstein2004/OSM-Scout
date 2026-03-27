@@ -130,7 +130,14 @@ def sync_to_supabase(data):
             
             # UPSERT PLAYERS
             players_payload = []
+            seen_keys = set()
             for p in club["players"]:
+                # Llave de conflicto refinada: Nombre + Edad + Nacionalidad
+                key = (p["name"], p["age"], p["nationality"])
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                
                 players_payload.append({
                     "club_id": club_id,
                     "name": p["name"],
@@ -150,7 +157,11 @@ def sync_to_supabase(data):
                 try:
                     @retry_supabase_call
                     def upsert_players():
-                        return supabase.table("players").upsert(players_payload, on_conflict="club_id,name").execute()
+                        # Usamos la nueva restricción UNIQUE de la DB para evitar colisiones
+                        return supabase.table("players").upsert(
+                            players_payload, 
+                            on_conflict="club_id,name,age,nationality"
+                        ).execute()
                     
                     res = upsert_players()
                     if res.data:
