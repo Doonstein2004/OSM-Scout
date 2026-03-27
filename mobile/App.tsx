@@ -122,7 +122,7 @@ export default function App() {
     try {
       let query = supabase
         .from('players')
-        .select('*, clubs!inner(id, name, leagues(name))');
+        .select('*, club:clubs!inner(id, name, league:leagues(name))');
       
       // Multiple Positions
       if (filterPos.length > 0) {
@@ -191,7 +191,7 @@ export default function App() {
   const filteredPlayers = players.filter((p: any) => 
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     p.detailed_position.toLowerCase().includes(search.toLowerCase()) ||
-    (p.clubs?.name && p.clubs.name.toLowerCase().includes(search.toLowerCase()))
+    (p.club?.name && p.club.name.toLowerCase().includes(search.toLowerCase()))
   );
 
   const calculateCombination = async () => {
@@ -600,7 +600,7 @@ export default function App() {
                                       <View className="flex-row items-center justify-between pt-3 border-t border-white/5 w-full">
                                           <View className="flex-row items-center flex-1 pr-2">
                                               <Text className="text-slate-400 text-[10px] font-medium" numberOfLines={2}>
-                                                  🛡️ <Text className="text-white">{player.clubs?.name || '-'}</Text>  /  🏆 {player.clubs?.leagues?.name?.slice(0, 18) || '-'}
+                                                  🛡️ <Text className="text-white">{player.club?.name || '-'}</Text>  /  🏆 {player.club?.league?.name?.slice(0, 18) || '-'}
                                               </Text>
                                           </View>
                                           <View className="bg-emerald-500/20 h-6 px-3 rounded-full justify-center border border-emerald-500/30">
