@@ -17,7 +17,7 @@ import { supabase } from './lib/supabase';
 import './lib/i18n';
 import { useTranslation } from 'react-i18next';
 import { findOptimalCombination, discoverCombosForPositions } from './lib/scouter';
-import { getFlag } from './lib/flags';
+import { getFlag, nationalityFlags } from './lib/flags';
 import './global.css';
 
 export default function App() {
@@ -32,9 +32,13 @@ export default function App() {
   }
 
   const [activeTab, setActiveTab] = useState('scout');
-  const [players, setPlayers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [players, setPlayers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const PAGE_SIZE = 50;
   const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState<'overall' | 'age' | 'value_amount'>('overall');
   const [sortAscending, setSortAscending] = useState(false);
   
   // Filters State (Multiple Selects!)
@@ -70,6 +74,7 @@ export default function App() {
   const [smartNationality, setSmartNationality] = useState<string | null>(null);
   const [smartAgeRange, setSmartAgeRange] = useState<string | null>(null);
   const [smartQualityRange, setSmartQualityRange] = useState<string | null>(null);
+  const [visibleTripsCount, setVisibleTripsCount] = useState<number>(30);
 
   // Selector Data
   const [nationalities, setNationalities] = useState<string[]>([]);
@@ -94,16 +99,19 @@ export default function App() {
   useEffect(() => {
     const fetchOptions = async () => {
       try {
-          const [{ data: nats }, { data: leags }, { data: clbs }] = await Promise.all([
-             supabase.from('players').select('nationality'),
-             supabase.from('leagues').select('*').order('name'),
-             supabase.from('clubs').select('*').order('name')
-          ]);
-          
-          if (nats) {
-             const uniqueNats = Array.from(new Set(nats.map(n => n.nationality))).filter(Boolean).sort();
-             setNationalities(uniqueNats as string[]);
-          }
+           // Unique nationalities to avoid synonyms (Argentina / Argentine)
+           const uniqueNats = [];
+           const seenFlags = new Set();
+           const sortedEntries = Object.entries(nationalityFlags).sort((a, b) => a[0].localeCompare(b[0]));
+           for (const [nat, flag] of sortedEntries) {
+               if (!seenFlags.has(flag)) {
+                   seenFlags.add(flag);
+                   uniqueNats.push(nat);
+               }
+           }
+           setNationalities(uniqueNats);
+           const { data: leags } = await supabase.from('leagues').select('*').order('name');
+           const { data: clbs } = await supabase.from('clubs').select('*').order('name');
           if (leags) setLeagues(leags);
           if (clbs) setClubs(clbs);
       } catch (error) {
@@ -114,10 +122,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    fetchPlayers();
-  }, [sortAscending]);
+    // Solo sincronizar estado de página y carga, pero NO disparar el fetch aquí
+    setPlayers([]);
+    setPage(0);
+    setHasMore(true);
+  }, [sortAscending, sortBy, filterPos, filterDetailedPos, filterNationality, filterAge, filterQuality, filterExactAge, filterExactQuality, filterLeague, filterClub]);
 
-  async function fetchPlayers() {
+  async function fetchPlayers(targetPage = page, isReset = false) {
+    if ((loading || !hasMore) && !isReset) return;
+    
     setLoading(true);
     try {
       let query = supabase
@@ -126,25 +139,20 @@ export default function App() {
       
       // Multiple Positions
       if (filterPos.length > 0) {
-          // Supabase trick: construct an OR array. 
-          // E.g., position.ilike.%Forward%,position.ilike.%Midfielder%
           const posQueries = filterPos.map(p => `position.ilike.%${p}%`).join(',');
           query = query.or(posQueries);
       }
-      // Multiple Detailed Positions
       if (filterDetailedPos.length > 0) {
           query = query.in('detailed_position', filterDetailedPos);
       }
       
       if (filterNationality) query = query.eq('nationality', filterNationality);
       if (filterClub) query = query.eq('club_id', filterClub.id);
-      if (filterLeague) query = query.eq('clubs.league_id', filterLeague.id);
+      if (filterLeague) query = query.eq('club.league_id', filterLeague.id);
       
-      // Exact Age / Quality Free Input overrides Ranges
       if (filterExactAge) {
           query = query.eq('age', parseInt(filterExactAge));
       } else if (filterAge.length > 0) {
-         // Age Ranges using OR
          const ageQueries = filterAge.map(a => {
              if (a === '<20') return `age.lt.20`;
              if (a === '20-24') return `and(age.gte.20,age.lte.24)`;
@@ -172,17 +180,24 @@ export default function App() {
          query = query.or(qualityQueries);
       }
 
-      query = query.order('overall', { ascending: sortAscending }).limit(100);
+      const from = targetPage * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      query = query
+        .order(sortBy, { ascending: sortAscending })
+        .range(from, to);
       
       const { data, error } = await query;
-      if (error) {
-         console.error("Fetch Error:", error);
-         setPlayers([]);
-      } else if (data) {
-         setPlayers(data as any);
+      if (error) throw error;
+
+      if (data) {
+         const mappedData = data as any;
+         setPlayers(prev => isReset ? mappedData : [...prev, ...mappedData]);
+         setHasMore(mappedData.length === PAGE_SIZE);
+         setPage(targetPage + 1);
       }
     } catch (e) {
-      console.error("Exception:", e);
+      console.error("Fetch Exception:", e);
     } finally {
       setLoading(false);
     }
@@ -196,6 +211,7 @@ export default function App() {
 
   const calculateCombination = async () => {
     if (targetPlayers.length === 0) return;
+    setCombinationResult(null);
     setCalculating(true);
     try {
       const res = await findOptimalCombination(supabase, targetPlayers);
@@ -209,6 +225,7 @@ export default function App() {
 
   const calculateSubPositions = async () => {
     if (targetPositions.length === 0) return;
+    setGeneratedTrips([]);
     setCalculating(true);
     try {
         const res = await discoverCombosForPositions(supabase, targetPositions, {
@@ -217,6 +234,7 @@ export default function App() {
             qualityRange: smartQualityRange
         });
         setGeneratedTrips(res);
+        setVisibleTripsCount(30);
     } catch(e) {
         console.log("Combo Error:", e);
     } finally {
@@ -252,19 +270,21 @@ export default function App() {
     setLeagueClubSearch('');
     try {
         // Fetch ALL players and clubs for this league
-        const { data: allData } = await supabase
+        const { data: allData, error } = await supabase
             .from('players')
-            .select('overall, value, age, name, club_id, clubs!inner(id, name)')
-            .eq('clubs.league_id', league.id);
+            .select('overall, value_amount, age, name, club_id, club:clubs!inner(id, name, leagues(id, name))')
+            .eq('club.league_id', league.id);
         
-        if (allData) {
+        if (error) throw error;
+        
+        if (allData && allData.length > 0) {
             // Group by club
             const clubsMap: any = {};
             allData.forEach((p: any) => {
                 if (!clubsMap[p.club_id]) {
                     clubsMap[p.club_id] = { 
                         id: p.club_id,
-                        name: p.clubs.name, 
+                        name: p.club?.name || 'Club Desconocido', 
                         totalOvr: 0, 
                         totalValue: 0, 
                         count: 0, 
@@ -272,8 +292,8 @@ export default function App() {
                     };
                 }
                 const c = clubsMap[p.club_id];
-                c.totalOvr += p.overall;
-                c.totalValue += (p.value || 0);
+                c.totalOvr += (p.overall || 0);
+                c.totalValue += (p.value_amount || 0);
                 c.count += 1;
                 c.topPlayers.push(p);
             });
@@ -281,7 +301,7 @@ export default function App() {
             const allClubs = Object.values(clubsMap).map((c: any) => ({
                 ...c,
                 avgOvr: Math.round(c.totalOvr / c.count),
-                avgAge: Math.round(c.topPlayers.reduce((a: any, b: any) => a + b.age, 0) / c.count),
+                avgAge: Math.round(c.topPlayers.reduce((acc: any, curr: any) => acc + (curr.age || 0), 0) / c.count),
                 allPlayers: c.topPlayers.sort((a: any, b: any) => b.overall - a.overall)
             })).sort((a: any, b: any) => b.avgOvr - a.avgOvr);
 
@@ -293,7 +313,7 @@ export default function App() {
 
             // Market stats
             const leagueAvgOvr = Math.round(allData.reduce((a, b) => a + (b.overall || 0), 0) / allData.length);
-            const totalMarketValue = allData.reduce((a, b) => a + (b.value || 0), 0);
+            const totalMarketValue = allData.reduce((a, b) => a + (b.value_amount || 0), 0);
 
             setSelectedLeagueStats({
                 leagueId: league.id,
@@ -331,9 +351,9 @@ export default function App() {
           <StatusBar barStyle="light-content" backgroundColor="#020617" />
           
           <View className="px-6 pt-6 pb-4 border-b border-white/10 flex-row justify-between items-center bg-slate-950">
-            <View>
-              <Text className="text-3xl font-black text-white tracking-tighter">OSM SCOUT <Text className="text-emerald-400">PRO</Text></Text>
-              <Text className="text-slate-400 text-[10px] font-black uppercase tracking-[2px]">{t('smart_scout_desc')}</Text>
+            <View className="flex-1 mr-4">
+              <Text className="text-2xl font-black text-white tracking-tighter" numberOfLines={1} adjustsFontSizeToFit>OSM SCOUT <Text className="text-emerald-400">PRO</Text></Text>
+              <Text className="text-slate-400 text-[10px] font-black uppercase tracking-[2px]" numberOfLines={1}>{t('smart_scout_desc')}</Text>
             </View>
             <View className="flex-row gap-2">
               <TouchableOpacity onPress={() => { setIsTourActive(true); setTourStep(0); }}>
@@ -343,8 +363,8 @@ export default function App() {
               </TouchableOpacity>
               {[ { code: 'es', flag: '🇪🇸' }, { code: 'en', flag: '🇺🇸' }, { code: 'pt', flag: '🇧🇷' } ].map(lang => (
                 <TouchableOpacity key={lang.code} onPress={() => i18n.changeLanguage(lang.code)}>
-                  <View className={`border px-2 py-1 rounded-xl ${i18n.language === lang.code ? 'bg-emerald-500 border-emerald-400' : 'bg-white/5 border-white/10'}`}>
-                    <Text className="text-white text-xs font-bold">{lang.flag}</Text>
+                  <View className={`border w-10 h-10 items-center justify-center rounded-xl overflow-hidden ${i18n.language && i18n.language.startsWith(lang.code) ? 'bg-emerald-500/20 border-emerald-400 shadow shadow-emerald-500' : 'bg-white/5 border-white/10'}`}>
+                    <Text className="text-white text-base font-bold">{lang.flag}</Text>
                   </View>
                 </TouchableOpacity>
               ))}
@@ -413,7 +433,7 @@ export default function App() {
                     )}
 
                     {/* Exact Filters (Free Inputs) */}
-                    <View className="flex-row gap-2 mb-4 w-full px-1">
+                    <View className="flex-row gap-2 mb-4 flex-wrap w-full px-1">
                         <View className="flex-1">
                            <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2">{t('exact_age')}</Text>
                            <SearchField className="rounded-xl border-white/10 bg-white/5 h-10 w-full">
@@ -511,7 +531,7 @@ export default function App() {
                                 <Button.Label className="text-white/70 font-bold text-xs">{t('clean')}</Button.Label>
                             </Button>
                         )}
-                        <Button onPress={fetchPlayers} className="flex-1 bg-emerald-500 h-12 rounded-2xl shadow-xl shadow-emerald-500/20">
+                        <Button onPress={() => fetchPlayers(0, true)} className="flex-1 bg-emerald-500 h-12 rounded-2xl shadow-xl shadow-emerald-500/20">
                             <Button.Label className="text-black font-black tracking-widest text-xs">{t('search_players')} 🔍</Button.Label>
                         </Button>
                     </View>
@@ -519,7 +539,7 @@ export default function App() {
 
                   <View className="px-4">
                       {/* Search Bar Row for specific names */}
-                      <View className="flex-row gap-2 mb-4 w-full items-center">
+                      <View className="flex-row gap-2 mb-4 flex-wrap w-full items-center">
                           <SearchField className="rounded-2xl border-white/10 bg-white/5 h-12 flex-1">
                             <Input 
                               placeholder={t('filter_results')} 
@@ -528,12 +548,28 @@ export default function App() {
                               className="text-white text-xs flex-1"
                             />
                           </SearchField>
-                          <Button 
-                              onPress={() => setSortAscending(!sortAscending)}
-                              className="border border-white/10 bg-white/5 rounded-2xl w-14 h-12 justify-center items-center p-0"
-                          >
-                              <Button.Label className="text-emerald-400 text-lg">{sortAscending ? '📈' : '📉'}</Button.Label>
-                          </Button>
+                          
+                          <View className="flex-row bg-white/5 border border-white/10 rounded-2xl overflow-hidden h-12 items-center px-1">
+                              {['overall', 'age', 'value_amount'].map((field) => (
+                                  <TouchableOpacity 
+                                      key={field}
+                                      onPress={() => {
+                                          if (sortBy === field) {
+                                              setSortAscending(!sortAscending);
+                                          } else {
+                                              setSortBy(field as any);
+                                              setSortAscending(false);
+                                          }
+                                      }}
+                                      className={`px-3 h-10 justify-center items-center rounded-xl ${sortBy === field ? 'bg-emerald-500' : ''}`}
+                                  >
+                                      <Text className={`text-[10px] font-black uppercase ${sortBy === field ? 'text-black' : 'text-slate-500'}`}>
+                                          {field === 'overall' ? 'OVR' : field === 'age' ? 'Edad' : 'Valor'}
+                                          {sortBy === field && (sortAscending ? ' 📈' : ' 📉')}
+                                      </Text>
+                                  </TouchableOpacity>
+                              ))}
+                          </View>
                       </View>
 
                       {/* Quick Info */}
@@ -556,8 +592,8 @@ export default function App() {
                             )}
                             {filteredPlayers.map((player: any, index: number) => (
                               <Animated.View 
-                                  key={player.id} 
-                                  entering={FadeInUp.delay(Math.min(index * 30, 300)).duration(400)}
+                                  key={player.id + '-' + index} 
+                                  entering={FadeInUp.delay(Math.min(index % 20 * 30, 300)).duration(400)}
                                   layout={LinearTransition}
                               >
                                   <Card className="mb-3 bg-white/5 border border-white/10 overflow-hidden rounded-3xl shadow-none">
@@ -604,13 +640,27 @@ export default function App() {
                                               </Text>
                                           </View>
                                           <View className="bg-emerald-500/20 h-6 px-3 rounded-full justify-center border border-emerald-500/30">
-                                              <Text className="text-emerald-400 font-black text-[10px]">{player.value_str || player.value}</Text>
+                                              <Text className="text-emerald-400 font-black text-[10px]">{player.value_str || player.value_amount}</Text>
                                           </View>
                                       </View>
                                   </Surface>
                                   </Card>
                               </Animated.View>
                             ))}
+                            {hasMore && (
+                              <TouchableOpacity 
+                                  onPress={() => fetchPlayers()}
+                                  className="py-6 items-center"
+                                  disabled={loading}
+                              >
+                                  <View className="bg-emerald-500/10 border border-emerald-500/20 px-6 py-3 rounded-2xl flex-row items-center gap-2">
+                                    {loading && <Spinner size="sm" className="text-emerald-500" />}
+                                    <Text className="text-emerald-500 font-black tracking-widest text-[10px] uppercase">
+                                      {loading ? t('loading') : t('load_more')}
+                                    </Text>
+                                  </View>
+                              </TouchableOpacity>
+                            )}
                         </View>
                       )}
                   </View>
@@ -718,8 +768,8 @@ export default function App() {
                                                 </View>
                                                 <View className="flex-row gap-2 mt-1">
                                                     <Text className="text-slate-500 text-[8px] uppercase font-bold">{t('age')}: <Text className="text-slate-300">{p.age}</Text></Text>
-                                                    <Text className="text-slate-500 text-[8px] uppercase font-bold">{t('team')}: <Text className="text-slate-300">{p.clubs?.name || '-'}</Text></Text>
-                                                    <Text className="text-slate-500 text-[8px] uppercase font-bold">{t('value')}: <Text className="text-emerald-500/60">{p.value_str || p.value}</Text></Text>
+                                                    <Text className="text-slate-500 text-[8px] uppercase font-bold">{t('team')}: <Text className="text-slate-300">{p.club?.name || '-'}</Text></Text>
+                                                    <Text className="text-slate-500 text-[8px] uppercase font-bold">{t('value')}: <Text className="text-emerald-500/60">{p.value_str || (p.value_amount ? (p.value_amount / 1000000).toFixed(1) + 'M' : '-')}</Text></Text>
                                                 </View>
                                             </View>
                                         );
@@ -754,7 +804,7 @@ export default function App() {
                  {smartMode === 'positions' && (
                      <View>
                         <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">{t('osm_options')}</Text>
-                        <View className="flex-row gap-2 mb-4">
+                        <View className="flex-row gap-2 mb-4 flex-wrap">
                            <TouchableOpacity 
                                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2"
                                onPress={() => openSelector(t('nationality'), nationalities, setSmartNationality, (v) => `${getFlag(v)} ${v}`)}
@@ -823,7 +873,7 @@ export default function App() {
                                 <Text className="text-white font-black text-lg mb-4">
                                     {(generatedTrips as any).isRecommendation ? "Sugerencias de Búsqueda:" : `${t('best_trips')}`}
                                 </Text>
-                                {(Array.isArray(generatedTrips) ? (generatedTrips as any[]) : (generatedTrips as any).recommendations).map((trip: any, tIdx: number) => (
+                                {(Array.isArray(generatedTrips) ? (generatedTrips as any[]) : (generatedTrips as any).recommendations).slice(0, visibleTripsCount).map((trip: any, tIdx: number) => (
                                    <View key={tIdx} className={`mb-6 p-5 rounded-3xl border w-full ${trip.probability >= 50 ? 'bg-emerald-500/10 border-emerald-500/20' : trip.probability >= 15 ? 'bg-amber-500/10 border-amber-500/20' : 'bg-white/5 border-white/10'}`}>
                                        <View className="flex-row justify-between items-center mb-3">
                                            <Text className="text-white font-black uppercase text-xs">VIAJE #{tIdx + 1}</Text>
@@ -854,31 +904,72 @@ export default function App() {
                                         </View>
 
                                        <View className="bg-black/20 p-3 rounded-xl border border-white/5">
-                                            <Text className="text-slate-400 text-[10px] uppercase tracking-widest font-bold mb-2">{t('pool_total')}: {trip.totalMatching} {t('players')}</Text>
+                                            <Text className="text-white font-black text-[10px] uppercase tracking-widest mb-2">{t('pool_analysis')}: {trip.totalMatching} {t('players')}</Text>
                                             <View className="flex-row gap-2 flex-wrap pb-2 mb-2 border-b border-white/5">
                                                 {Object.entries(trip.matchingPlayers.reduce((acc:any, p:any) => {
                                                     acc[p.detailed_position] = (acc[p.detailed_position] || 0) + 1; return acc;
                                                 }, {})).map(([pos, c]: [string, any]) => (
                                                     <View key={pos} className="flex-row items-center">
-                                                        <Text className="text-amber-300 font-black text-xs">{c} </Text>
-                                                        <Text className="text-slate-400 text-xs">{t(pos)}</Text>
+                                                        <Text className="text-emerald-400 font-black text-xs">{c} </Text>
+                                                        <Text className="text-slate-400 text-[10px]">{t(pos)}</Text>
                                                     </View>
                                                 ))}
+                                                {trip.noisePlayers && trip.noisePlayers.length > 0 && (
+                                                    <View className="flex-row items-center ml-auto">
+                                                        <Text className="text-red-400 font-black text-xs">{trip.noiseCount} </Text>
+                                                        <Text className="text-slate-400 text-[10px] uppercase">{t('threats')}</Text>
+                                                    </View>
+                                                )}
                                             </View>
-                                            {trip.matchingPlayers.map((p: any) => (
-                                                <View key={p.id} className="mb-1.5 border-b border-white/5 pb-1">
-                                                    <Text className="text-white/60 text-[10px] font-bold tracking-tight">• {p.name} ({p.overall}) - {t(p.detailed_position)}</Text>
-                                                    <View className="flex-row gap-2 mt-0.5 ml-2">
-                                                        <Text className="text-slate-600 text-[8px] uppercase font-bold">{t('age')}: <Text className="text-slate-400">{p.age}</Text></Text>
-                                                        <Text className="text-slate-600 text-[8px] uppercase font-bold">{t('team')}: <Text className="text-slate-400">{p.clubs?.name || '-'}</Text></Text>
-                                                        <Text className="text-slate-600 text-[8px] uppercase font-bold">{t('value')}: <Text className="text-emerald-500/40">{p.value_str || p.value}</Text></Text>
+                                            
+                                            {/* List of Players in the Pool (Good and Bad) */}
+                                            {[
+                                                ...trip.matchingPlayers.map((p: any) => ({ ...p, isTarget: true })),
+                                                ...trip.noisePlayers.map((p: any) => ({ ...p, isTarget: false }))
+                                            ].map((p: any) => (
+                                                <View key={p.id} className={`mb-2 py-2 px-3 rounded-2xl border ${p.isTarget ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+                                                    <View className="flex-row justify-between items-center">
+                                                        <View className="flex-row items-center flex-1">
+                                                            <Text className="mr-2 text-xs">{p.isTarget ? '✅' : '⚠️'}</Text>
+                                                            <Text className={`font-bold text-xs ${p.isTarget ? 'text-emerald-400' : 'text-red-300'}`} numberOfLines={1}>
+                                                                {p.name}
+                                                            </Text>
+                                                        </View>
+                                                        <View className="flex-row gap-2">
+                                                            <Text className={`font-black text-[10px] ${p.isTarget ? 'text-white' : 'text-white/80'}`}>{p.overall} OVR</Text>
+                                                            <View className={`px-1.5 rounded ${p.isTarget ? 'bg-emerald-500' : 'bg-red-500'}`}>
+                                                                <Text className={`font-black text-[9px] ${p.isTarget ? 'text-black' : 'text-red-300'}`}>{t(p.detailed_position)}</Text>
+                                                            </View>
+                                                        </View>
+                                                    </View>
+                                                    <View className="flex-row gap-3 mt-1.5">
+                                                        <Text className="text-[8px] uppercase font-black text-slate-100/40">{t('age')}: <Text className="text-slate-100">{p.age}</Text></Text>
+                                                        <Text className="text-[8px] uppercase font-black text-slate-100/40" numberOfLines={1} style={{maxWidth: '40%'}}>{t('team')}: <Text className="text-slate-100">{p.clubs?.name || p.club?.name || '-'}</Text></Text>
+                                                        <Text className="text-[8px] uppercase font-black text-slate-100/40">{t('value')}: <Text className={`${p.isTarget ? 'text-emerald-400 font-black' : 'text-orange-400 font-black'}`}>{p.value_str || (p.value_amount ? (p.value_amount / 1000000).toFixed(1) + 'M' : '-')}</Text></Text>
                                                     </View>
                                                 </View>
                                             ))}
+
+                                            {trip.noiseCount > trip.noisePlayers.length && (
+                                                <Text className="text-[8px] text-center text-slate-600 mt-1 uppercase tracking-tighter italic">
+                                                    + {trip.noiseCount - trip.noisePlayers.length} {t('threats')} adicionales...
+                                                </Text>
+                                            )}
                                        </View>
                                    </View>
                                 ))}
                              </Animated.View>
+                        )}
+
+                        {generatedTrips && ((Array.isArray(generatedTrips) ? (generatedTrips as any[]) : (generatedTrips as any).recommendations).length > visibleTripsCount) && (
+                            <View className="w-full pb-10">
+                                <TouchableOpacity 
+                                    className="bg-emerald-500/20 border border-emerald-500/40 rounded-2xl h-14 items-center justify-center w-full shadow-lg shadow-emerald-500/10" 
+                                    onPress={() => setVisibleTripsCount(prev => prev + 30)}
+                                >
+                                    <Text className="text-emerald-300 font-black tracking-widest uppercase text-xs">Cargar más resultados ({((Array.isArray(generatedTrips) ? (generatedTrips as any[]) : (generatedTrips as any).recommendations).length - visibleTripsCount)} restantes) ⬇️</Text>
+                                </TouchableOpacity>
+                            </View>
                         )}
                         
                         {targetPositions.length > 0 && generatedTrips.length === 0 && !calculating && (
@@ -1045,7 +1136,7 @@ export default function App() {
                                                           <View className="flex-row justify-between items-start mb-4">
                                                               <View>
                                                                   <View className="flex-row items-center mb-1">
-                                                                      <Text className="text-white font-black text-lg mr-2">{club.name}</Text>
+                                                                      <Text className="text-white font-black text-lg mr-2 flex-shrink">{club.name}</Text>
                                                                       <Text className="text-slate-400">❯</Text>
                                                                   </View>
                                                                   <Text className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
@@ -1057,7 +1148,7 @@ export default function App() {
                                                               </View>
                                                           </View>
 
-                                                          <View className="flex-row gap-2 mb-4">
+                                                          <View className="flex-row gap-2 mb-4 flex-wrap">
                                                               {club.allPlayers.slice(0, 3).map((tp: any, pIdx: number) => (
                                                                   <View key={pIdx} className="bg-white/5 px-3 py-1.5 rounded-2xl border border-white/5 flex-row items-center">
                                                                       <Text className="text-indigo-300 font-black text-[10px] mr-2">{tp.overall}</Text>
@@ -1091,7 +1182,7 @@ export default function App() {
                                                   </View>
                                                   <Text className="text-white font-black text-base" numberOfLines={1}>{p.name}</Text>
                                                   <Text className="text-amber-400/60 font-black text-[10px] uppercase mb-3">{p.age} AÑOS • {p.overall} OVR</Text>
-                                                  <Text className="text-slate-500 text-[10px] font-bold" numberOfLines={1}>{p.clubs.name}</Text>
+                                                  <Text className="text-slate-500 text-[10px] font-bold" numberOfLines={1}>{p.club?.name || '-'}</Text>
                                               </View>
                                           ))}
                                       </ScrollView>
@@ -1144,7 +1235,7 @@ export default function App() {
                                                       </View>
                                                   </View>
                                                   <View className="items-end">
-                                                      <Text className="text-emerald-400 font-black text-sm">{item.value ? (item.value / 1000000).toFixed(1) + 'M' : '-'}</Text>
+                                                      <Text className="text-emerald-400 font-black text-sm">{item.value_str || (item.value_amount ? (item.value_amount / 1000000).toFixed(1) + 'M' : '-')}</Text>
                                                       <Text className="text-slate-500 text-[9px] font-black uppercase">OSM$</Text>
                                                   </View>
                                               </View>
@@ -1209,7 +1300,7 @@ export default function App() {
                            setSelectModal(prev => ({ ...prev, isOpen: false }));
                         }}
                      >
-                        <Text className="text-white font-medium text-base">{selectModal.renderLabel(item)}</Text>
+                         <Text className="text-white font-medium text-base">{selectModal.renderLabel(item)}</Text>
                      </TouchableOpacity>
                  )}
               />
@@ -1221,7 +1312,7 @@ export default function App() {
 
       {/* QUICK TOUR OVERLAY */}
       {isTourActive && (
-          <View className="absolute inset-0 bg-black/90 z-[9999] justify-center p-8">
+          <View className="absolute inset-0 bg-black/70 z-[9999] justify-center p-8">
               <Animated.View entering={FadeInUp} className="bg-slate-900 border border-white/10 rounded-[40px] p-8 items-center shadow-2xl shadow-emerald-500/20">
                   <View className="w-24 h-24 rounded-full bg-emerald-500/10 items-center justify-center mb-6">
                       <Text className="text-5xl">

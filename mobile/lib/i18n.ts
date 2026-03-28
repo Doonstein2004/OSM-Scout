@@ -40,7 +40,9 @@ const resources = {
       "add": "ADD",
       "remove": "REMOVE",
       "score": "SCORE",
-      "score_desc": "Hack OSM filters by discovering perfect combinations.",
+      "score_desc": "Master OSM filters by discovering winning combinations.",
+      "pool_analysis": "Pool",
+      "load_more": "LOAD MORE",
       "mode_player": "BY PLAYER",
       "mode_position": "BY POSITION",
       "target_players": "Target Players",
@@ -92,11 +94,11 @@ const resources = {
       "tour_welcome_title": "Welcome to Scout Pro!",
       "tour_welcome_desc": "Master the OSM market with Artificial Intelligence.",
       "tour_scout_title": "The Scouter",
-      "tour_scout_desc": "Find any player in the world with advanced multiselect filters.",
+      "tour_scout_desc": "1. Multi-select positions & filters.\n2. Add targets using 'ADD'.\n3. Start hunting!",
       "tour_smart_title": "Smart Scout",
-      "tour_smart_desc": "Calculate the exact filters to guarantee your scouter brings exactly what you want.",
+      "tour_smart_desc": "1. Go to SMART.\n2. Hit Calculate.\n3. Get the exact magical filters for OSM (100% guarantee).",
       "tour_leagues_title": "League Analysis",
-      "tour_leagues_desc": "Compare leagues and find where the best bargains are hidden."
+      "tour_leagues_desc": "1. Pick any league.\n2. Compare club values.\n3. Discover hidden top youngsters."
     }
   },
   es: {
@@ -137,7 +139,9 @@ const resources = {
       "add": "AÑADIR",
       "remove": "QUITAR",
       "score": "SCORE",
-      "score_desc": "Piratea los filtros de OSM descubriendo combinaciones perfectas.",
+      "score_desc": "Domina los filtros de OSM descubriendo combinaciones ganadoras.",
+      "pool_analysis": "Pool",
+      "load_more": "CARGAR MÁS",
       "mode_player": "POR JUGADOR",
       "mode_position": "POR POSICIÓN",
       "target_players": "Jugadores Objetivo",
@@ -189,11 +193,11 @@ const resources = {
       "tour_welcome_title": "¡Bienvenido a Scout Pro!",
       "tour_welcome_desc": "Domina el mercado de OSM con Inteligencia Artificial.",
       "tour_scout_title": "El Ojeador",
-      "tour_scout_desc": "Busca cualquier jugador con filtros multi-selección avanzados.",
+      "tour_scout_desc": "1. Selecciona múltiples filtros a la vez.\n2. Busca por barra.\n3. Añade tu objetivo con 'AÑADIR'.",
       "tour_smart_title": "Smart Scout",
-      "tour_smart_desc": "Calcula los filtros exactos para garantizar que tu ojeador traiga lo que buscas.",
+      "tour_smart_desc": "1. Ve a SMART.\n2. Presiona Calcular.\n3. Descubre los filtros mágicos con el 100% de éxito garantizado.",
       "tour_leagues_title": "Análisis de Ligas",
-      "tour_leagues_desc": "Compara ligas y encuentra dónde están los mejores chollos."
+      "tour_leagues_desc": "1. Explora Ligas.\n2. Analiza valores reales.\n3. Encuentra de inmediato las mejores promesas sub-21."
     }
   },
   pt: {
@@ -234,7 +238,9 @@ const resources = {
       "add": "ADICIONAR",
       "remove": "REMOVER",
       "score": "SCORE",
-      "score_desc": "Hackeie os filtros do OSM descobrindo combinações perfeitas.",
+      "score_desc": "Domine os filtros do OSM descobrindo combinações vencedoras.",
+      "pool_analysis": "Lote",
+      "load_more": "CARREGAR MAIS",
       "mode_player": "POR JOGADOR",
       "mode_position": "POR POSIÇÃO",
       "target_players": "Jogadores Alvo",
@@ -286,11 +292,11 @@ const resources = {
       "tour_welcome_title": "Bem-vindo ao Scout Pro!",
       "tour_welcome_desc": "Domine o mercado do OSM com Inteligência Artificial.",
       "tour_scout_title": "O Olheiro",
-      "tour_scout_desc": "Encontre qualquer jogador do mundo com filtros avançados.",
+      "tour_scout_desc": "1. Selecione múltiplos filtros.\n2. Adicione os seus alvos.\n3. Caçada perfeita!",
       "tour_smart_title": "Smart Scout",
-      "tour_smart_desc": "Calcule os filtros exatos para garantir que o olheiro traga o que você quer.",
+      "tour_smart_desc": "1. Vá a SMART e clique em Calcular.\n2. A IA encontrará a combinação de filtros OSM com 100% de precisão para usar no jogo.",
       "tour_leagues_title": "Análise de Ligas",
-      "tour_leagues_desc": "Compare ligas e descubra onde estão as melhores pechinchas."
+      "tour_leagues_desc": "1. Explore ligas.\n2. Compare valores.\n3. Encontre as melhores promessas do mundo."
     }
   }
 
@@ -300,7 +306,7 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    lng: 'es',
+    fallbackLng: 'es',
     interpolation: {
       escapeValue: false
     }
