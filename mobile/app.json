@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "OSM Scout Pro",
-    "slug": "osm-scout",
+    "name": "OSM Scouting",
+    "slug": "osm-scouting",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -9,16 +9,16 @@
     "backgroundColor": "#000000",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/splash.jpg",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.doonstein.osmscout"
+      "bundleIdentifier": "com.doonstein.osmscouting"
     },
     "android": {
-      "package": "com.doonstein.osmscout",
+      "package": "com.doonstein.osmscouting",
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -27,14 +27,15 @@
       "permissions": [
         "INTERNET"
       ],
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "pan",
+      "compressResources": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "eas": {
-        "projectId": "8b2d09b9-cb6b-4bad-92fa-e719c1639d99"
+        "projectId": "ff28b719-249b-4507-81a0-87e36ea07436"
       }
     }
   }
