@@ -9,8 +9,26 @@ class InvalidCredentialsError(Exception):
 
 def handle_popups(page: Page):
     """
-    Versión v4.0: Cierra modales de forma más agresiva.
+    Versión v4.2: Cierra modales agresivos, incluyendo el aviso de Password Login (que es un div, no un button).
     """
+    try:
+        # El botón "I understand" es a veces un div con clase btn-new
+        understand_selectors = [
+            "button:has-text('I understand')",
+            "div.btn-new:has-text('I understand')",
+            ".modal-content .btn-new",
+            "button:has-text('Entiendo')",
+            "div.btn-new:has-text('Entiendo')"
+        ]
+        for sel in understand_selectors:
+            loc = page.locator(sel)
+            if loc.is_visible(timeout=500):
+                loc.click(force=True)
+                page.wait_for_timeout(1000)
+                break
+    except:
+        pass
+
     try:
         page.add_style_tag(content="""
             #preloader-image, .modal-backdrop, #genericModalContainer, 
@@ -74,37 +92,56 @@ def login_to_osm(page: Page, osm_username: str, osm_password: str, max_retries: 
     
     for attempt in range(max_retries):
         try:
-            page.goto(LOGIN_URL, wait_until="networkidle", timeout=60000)
-            for _ in range(30):
+            print(f"  🔑 Intento {attempt + 1}: Navegando a {LOGIN_URL}...")
+            # networkidle es muy lento en OSM, usamos domcontentloaded y un timeout más alto
+            page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=90000)
+            
+            for check in range(30):
                 handle_popups(page)
                 current_url = page.url
+                print(f"    Check {check+1}/30: {current_url}")
+                
                 if SUCCESS_URLS_REGEX.search(current_url):
+                    print("    ✅ Redirección exitosa detectada!")
                     return True
+                
                 if "PrivacyNotice" in current_url:
+                    print("    ⚖️ Aviso de privacidad detectado. Aceptando...")
                     accept_btn = page.get_by_role("button", name=re.compile("Accept|Agree|Aceptar|OK", re.IGNORECASE))
                     if accept_btn.is_visible():
                         accept_btn.click(force=True)
                         page.wait_for_timeout(2000)
-                        page.goto(LOGIN_URL, wait_until="networkidle")
+                        page.goto(LOGIN_URL, wait_until="domcontentloaded")
                     continue
+                
                 if "Register" in current_url:
-                    page.goto(LOGIN_URL, wait_until="networkidle")
+                    print("    🔄 Redirigiendo desde Register a Login...")
+                    page.goto(LOGIN_URL, wait_until="domcontentloaded")
                     continue
+                
                 if "Login" in current_url:
                     username_input = page.locator("input#manager-name")
                     password_input = page.locator("input#password")
-                    if username_input.is_visible(timeout=10000):
+                    
+                    if username_input.is_visible(timeout=5000):
+                        print(f"    📝 Rellenando formulario para {osm_username}...")
                         username_input.fill(osm_username)
                         password_input.fill(osm_password)
-                        password_input.press("Enter")
+                        page.locator("button#login").click() # Cambiado de Enter a Clic directo
                         time.sleep(8)
+                        
                         try:
                             page.wait_for_function("() => window.location.href.includes('Career') || window.location.href.includes('ChooseLeague') || document.querySelector('.feedback-message') !== null", timeout=15000)
                             error_msg = page.locator(".feedbackcontainer .feedback-message")
                             if error_msg.is_visible(timeout=2000):
+                                print(f"    ❌ Error de OSM: {error_msg.inner_text()}")
                                 raise InvalidCredentialsError(f"OSM: {error_msg.inner_text()}")
-                        except PlaywrightTimeoutError: pass
-                    continue
+                        except PlaywrightTimeoutError: 
+                            print("    ⏳ Espera terminada, revisando URL de nuevo...")
+                            pass
+                    else:
+                        print("    ⌛ Esperando a que el formulario sea visible...")
+                
                 time.sleep(2)
         except InvalidCredentialsError as e: raise e
         except Exception as e:
