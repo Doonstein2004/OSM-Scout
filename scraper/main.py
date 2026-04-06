@@ -64,7 +64,8 @@ def parse_player_data(page, expected_club):
     try:
         header_selector = 'h2[data-bind="text: name"]'
         try:
-            page.wait_for_selector(f"{header_selector}:has-text('{expected_club}')", timeout=12000)
+            safe_club = expected_club.replace('"', '\\"')
+            page.wait_for_selector(f'{header_selector}:has-text("{safe_club}")', timeout=12000)
             actual_name = page.locator(header_selector).inner_text().strip()
             logger.info(f"    ✅ Confirmado: Estamos en la página de {actual_name}")
         except Exception:
@@ -158,6 +159,9 @@ def scrape_osm(username, password):
                 row.click()
                 
                 page.wait_for_selector("table#leaguetypes-table thead th", timeout=30000)
+                league_url = page.url # Guardar URL para recuperación
+                logger.info(f"    🔗 URL de la Liga: {league_url}")
+                
                 headers = page.locator("table#leaguetypes-table thead th")
                 header_map = {"club": 0, "obj": 1, "val": 2, "inc": 3}
                 for h in range(headers.count()):
@@ -167,19 +171,39 @@ def scrape_osm(username, password):
                     elif "val" in txt: header_map["val"] = h
                     elif "inc" in txt or "funds" in txt: header_map["inc"] = h
 
-                club_rows = page.locator("table#leaguetypes-table tbody tr.clickable")
-                num_clubs = club_rows.count()
+                # Paso 1: Obtener la lista de nombres de todos los clubes primero
+                club_names = []
+                rows_loc = page.locator("table#leaguetypes-table tbody tr.clickable")
+                for c_idx in range(rows_loc.count()):
+                    name = rows_loc.nth(c_idx).locator("td").nth(header_map["club"]).locator("span[data-bind*='text: name']").inner_text().strip()
+                    if name:
+                        club_names.append(name)
+                
+                num_clubs = len(club_names)
+                logger.info(f"    📋 Lista de clubes detectada ({num_clubs}): {', '.join(club_names[:5])}...")
+                
                 clubs_in_league = []
 
-                for j in range(num_clubs):
+                for j, club_target in enumerate(club_names):
                     max_retries = 3
+                    club_name = club_target 
                     for attempt in range(max_retries):
                         try:
-                            current_club_row = page.locator("table#leaguetypes-table tbody tr.clickable").nth(j)
-                            current_club_row.scroll_into_view_if_needed()
+                            # Buscar la fila que contiene exactamente este nombre de club
+                            # Usamos comillas dobles y escape para nombres con apóstrofes
+                            safe_target = club_target.replace('"', '\\"')
+                            current_club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:has-text(\"{safe_target}\"))").first
                             
+                            if not current_club_row.is_visible(timeout=5000):
+                                logger.warning(f"    ⚠️ No se visualiza la fila de {club_target}. Recargando liga...")
+                                page.goto(league_url, wait_until="domcontentloaded", timeout=30000)
+                                handle_popups(page)
+                                current_club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:has-text(\"{safe_target}\"))").first
+
+                            current_club_row.scroll_into_view_if_needed()
                             tds = current_club_row.locator("td")
-                            club_name = tds.nth(header_map["club"]).locator("span[data-bind*='text: name']").inner_text().strip()
+                            
+                            # Re-extraer datos de la fila (objetivo, valores)
                             objective = tds.nth(header_map["obj"]).inner_text().strip()
                             
                             squad_val_str = ""
@@ -200,12 +224,15 @@ def scrape_osm(username, password):
                             
                             # Verificación de carga
                             header_selector = 'h2[data-bind="text: name"]'
+                            safe_club_name = club_name.replace('"', '\\"')
                             try:
-                                page.wait_for_selector(f"{header_selector}:has-text('{club_name}')", timeout=12000)
+                                page.wait_for_selector(f'{header_selector}:has-text("{safe_club_name}")', timeout=12000)
                             except:
                                 handle_popups(page)
-                                current_club_row.click(force=True)
-                                page.wait_for_selector(f"{header_selector}:has-text('{club_name}')", timeout=15000)
+                                # Evitar click_force si ya estamos en la página del equipo
+                                if "LeagueTypes/Team" not in page.url:
+                                    current_club_row.click(force=True, timeout=5000)
+                                page.wait_for_selector(f'{header_selector}:has-text("{safe_club_name}")', timeout=15000)
 
                             players = parse_player_data(page, club_name)
                             if not players:
@@ -230,7 +257,10 @@ def scrape_osm(username, password):
                             logger.error(f"    ❌ Error en club {j} (Intento {attempt+1}): {e}")
                             if attempt == max_retries - 1:
                                 logger.error(f"    ‼️ Fallo definitivo en {club_name}")
-                            page.goto(page.url) # Reload or try to recover
+                            
+                            handle_popups(page)
+                            logger.info(f"    🔄 Intentando recuperar navegando a: {league_url}")
+                            page.goto(league_url, wait_until="domcontentloaded", timeout=30000)
                             time.sleep(2)
 
                 leagues_data_final.append({"league_name": league_name, "clubs": clubs_in_league})
