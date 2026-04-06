@@ -131,13 +131,13 @@ async function debugSmartEngine() {
   // ─── PASO 1: Determinar posición general ──────────
   separator('PASO 1: Posición General');
   const generalPositions = [...new Set(targetPositions.map(toGeneralPos))];
-  const mainPos = generalPositions[0];
-  const activeTargets = targetPositions.filter(tp => toGeneralPos(tp) === mainPos);
+  const mainPos = generalPositions.length > 1 ? 'Cualquiera' : generalPositions[0];
+  const activeTargets = targetPositions;
   log('🏷️', `General Position: ${mainPos}`);
   log('🎯', `Active Targets: ${activeTargets.join(', ')}`);
   if (generalPositions.length > 1) {
-    log('⚠️', `ATENCIÓN: Las posiciones pedidas abarcan múltiples categorías: ${generalPositions.join(', ')}`);
-    log('⚠️', `El ojeador solo puede filtrar UNA categoría general por viaje.`);
+    log('💡', `INFO: Las posiciones abarcan múltiples categorías: ${generalPositions.join(', ')}`);
+    log('💡', `Usando posición 'Cualquiera' para permitir búsqueda múltiple.`);
   }
 
   // ─── PASO 2: Buscar candidatos ────────────────────
@@ -301,7 +301,9 @@ async function debugSmartEngine() {
       if (c.qual !== '+100' && c.qual !== 'Cualquiera') poolQuery = poolQuery.gte('overall', minQ).lte('overall', maxQ);
       
       // FILTRA POR POSICIÓN GENERAL (como lo hace el ojeador de OSM)
-      poolQuery = poolQuery.ilike('position', `%${mainPos}%`);
+      if (mainPos !== 'Cualquiera') {
+        poolQuery = poolQuery.ilike('position', `%${mainPos}%`);
+      }
 
       const { data: pool, error: poolError } = await poolQuery;
       queryCount++;

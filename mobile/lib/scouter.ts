@@ -123,10 +123,8 @@ export async function discoverCombosForPositions(
   extraFilters?: { nationality?: string | null; ageRange?: string | null; qualityRange?: string | null }
 ) {
   const generalPositions = Array.from(new Set(targetPositions.map(toGeneralPos)));
-  const posCounts: any = {};
-  generalPositions.forEach(p => { posCounts[p] = (posCounts[p] || 0) + 1; });
-  const mainPos = Object.keys(posCounts).sort((a, b) => posCounts[b] - posCounts[a])[0];
-  const activeTargets = targetPositions.filter(tp => toGeneralPos(tp) === mainPos);
+  const mainPos = generalPositions.length > 1 ? 'Cualquiera' : generalPositions[0];
+  const activeTargets = targetPositions;
 
   const isWorldStar = extraFilters?.qualityRange === '+100' || extraFilters?.qualityRange === '100+';
 
@@ -202,12 +200,16 @@ export async function discoverCombosForPositions(
      const batch = uniqueNatLeagues.slice(i, i + BATCH_SIZE);
      await Promise.all(batch.map(async (key) => {
          const [nat, leagueId] = key.split('::');
-         const { data, error } = await supabase.from('players')
+         let poolQuery = supabase.from('players')
             .select('id, name, detailed_position, age, overall, nationality, value_amount, value_str, clubs!inner(name, league_id)')
             .eq('nationality', nat)
-            .eq('clubs.league_id', leagueId)
-            .ilike('position', `%${mainPos}%`)
-            .limit(1500);
+            .eq('clubs.league_id', leagueId);
+
+         if (mainPos !== 'Cualquiera') {
+             poolQuery = poolQuery.ilike('position', `%${mainPos}%`);
+         }
+
+         const { data, error } = await poolQuery.limit(1500);
          if (!error && data) {
              uniquePools.set(key, data);
          }
