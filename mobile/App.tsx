@@ -269,15 +269,27 @@ export default function App() {
     setLoadingLeagueStats(true);
     setLeagueClubSearch('');
     try {
-        // Fetch ALL players and clubs for this league
-        const { data: allData, error } = await supabase
-            .from('players')
-            .select('overall, value_amount, age, name, club_id, club:clubs!inner(id, name, leagues(id, name))')
-            .eq('club.league_id', league.id);
+        // Fetch ALL players for this league with pagination
+        // Supabase default limit is 1000 rows, so we must paginate
+        let allData: any[] = [];
+        let from = 0;
+        const pageSize = 1000;
         
-        if (error) throw error;
+        while (true) {
+            const { data: chunk, error: chunkError } = await supabase
+                .from('players')
+                .select('overall, value_amount, age, name, club_id, club:clubs!inner(id, name, leagues(id, name))')
+                .eq('club.league_id', league.id)
+                .range(from, from + pageSize - 1);
+            
+            if (chunkError) throw chunkError;
+            if (!chunk || chunk.length === 0) break;
+            allData = allData.concat(chunk);
+            if (chunk.length < pageSize) break;
+            from += pageSize;
+        }
         
-        if (allData && allData.length > 0) {
+        if (allData.length > 0) {
             // Group by club
             const clubsMap: any = {};
             allData.forEach((p: any) => {

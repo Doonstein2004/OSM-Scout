@@ -108,14 +108,12 @@ function calculateSmartProbability(pool: any[], targetPositions: string[]): numb
 }
 
 /**
- * SMART SNIPER ALGORITHM — Dual Mode
+ * SMART SNIPER ALGORITHM — Optimized v2
  *
- * Mode 1 (Normal): qualityRange = '60-69', '70-74', etc.
- *   → Groups by (Nat, League, Age, OVR) — finds best pool within that OVR range
- *
- * Mode 2 (World Star): qualityRange = '+100'
- *   → Groups by (Nat, League, Age) ONLY — ignores OVR because the scout
- *     brings ALL players when you select +100, regardless of their base OVR
+ * Key optimizations:
+ * 1. Single DB query: candidates ARE the pool data (no second round of queries)
+ * 2. All grouping, filtering, and probability done in-memory
+ * 3. Early pruning of combos with too many players (low probability)
  */
 export async function discoverCombosForPositions(
   supabase: any,
@@ -128,12 +126,20 @@ export async function discoverCombosForPositions(
 
   const isWorldStar = extraFilters?.qualityRange === '+100' || extraFilters?.qualityRange === '100+';
 
-  // --- STEP 1: Fetch candidates with minimal but sufficient detail ---
+  // --- STEP 1: Fetch ALL players that could form a pool ---
+  // Instead of fetching only targets then re-querying for full pools,
+  // we fetch all players matching the general position filter.
+  // This is ONE query instead of potentially hundreds.
   let query = supabase
     .from('players')
-    .select('id, nationality, detailed_position, age, overall, clubs!inner(id, league_id, leagues(id, name))')
-    .in('detailed_position', activeTargets);
+    .select('id, name, nationality, detailed_position, age, overall, value_amount, value_str, position, clubs!inner(id, name, league_id, leagues(id, name))');
 
+  // Filter by general position (same as OSM scout would)
+  if (mainPos !== 'Cualquiera') {
+    query = query.ilike('position', `%${mainPos}%`);
+  }
+
+  // Apply user filters to reduce dataset
   if (extraFilters?.nationality) query = query.eq('nationality', extraFilters.nationality);
   if (extraFilters?.ageRange) {
     const [minA, maxA] = getAgeBounds(extraFilters.ageRange);
@@ -144,113 +150,73 @@ export async function discoverCombosForPositions(
     query = query.gte('overall', minQ).lte('overall', maxQ);
   }
 
-  let candidates: any[] = [];
+  // Paginate to get all data
+  let allPlayers: any[] = [];
   let from = 0;
   const chunk = 1000;
-  
-  while (true) {
-      const { data, error } = await query.range(from, from + chunk - 1);
-      if (error || !data) break;
-      candidates = candidates.concat(data);
-      if (data.length < chunk || candidates.length >= 25000) break;
-      from += chunk;
-  }
-  
-  if (candidates.length === 0) return [];
 
-  // --- STEP 2: Grouping ---
-  const combos = new Map<string, any>();
-  for (const p of candidates) {
+  while (true) {
+    const { data, error } = await query.range(from, from + chunk - 1);
+    if (error || !data) break;
+    allPlayers = allPlayers.concat(data);
+    if (data.length < chunk) break;
+    from += chunk;
+  }
+
+  if (allPlayers.length === 0) return [];
+
+  // --- STEP 2: Group players into pools by (nat, league, age, qual) ---
+  // A "pool" is what the OSM scout would return for a given filter combo.
+  // We build pools from the data we already have — NO extra DB queries needed.
+  const poolMap = new Map<string, any[]>();
+
+  for (const p of allPlayers) {
     const nat = p.nationality;
     const leagueId = p.clubs.league_id;
-    const leagueName = p.clubs.leagues.name;
     const ageR = getOSMAgeRange(p.age);
     const qualR = isWorldStar ? '+100' : getOSMQualityRange(p.overall);
 
+    // Each player belongs to multiple pools (their specific age + "Cualquiera")
     const ageOpts = [ageR, 'Cualquiera'];
     for (const a of ageOpts) {
       if (extraFilters?.ageRange && a !== extraFilters.ageRange && a !== 'Cualquiera') continue;
       const key = `${nat}::${leagueId}::${a}::${qualR}`;
-      if (!combos.has(key)) {
-        combos.set(key, { nat, leagueId, leagueName, age: a, qual: qualR, targetIds: new Set() });
-      }
-      combos.get(key)!.targetIds.add(p.id);
+      if (!poolMap.has(key)) poolMap.set(key, []);
+      poolMap.get(key)!.push(p);
     }
   }
 
-  // --- STEP 3: Precise Verification & Enrichment ---
-  const validCombos = [...combos.values()].filter(c => {
-    const coveredPos = new Set<string>();
-    candidates.forEach((p: any) => {
-      if (c.targetIds.has(p.id)) coveredPos.add(p.detailed_position);
-    });
-    return activeTargets.every(tp => coveredPos.has(tp));
-  });
-
-  if (validCombos.length === 0) return [];
-
+  // --- STEP 3: Evaluate each pool ---
+  const dbTargets = activeTargets.map(toDBPos);
   const results: any[] = [];
-  
-  // OPTIMIZATION: Extract unique [nationality, leagueId] to minimize DB queries
-  const uniquePools = new Map<string, any[]>();
-  const uniqueNatLeagues = [...new Set(validCombos.map(c => `${c.nat}::${c.leagueId}`))];
-  
-  const BATCH_SIZE = 15;
-  for (let i = 0; i < uniqueNatLeagues.length; i += BATCH_SIZE) {
-     const batch = uniqueNatLeagues.slice(i, i + BATCH_SIZE);
-     await Promise.all(batch.map(async (key) => {
-         const [nat, leagueId] = key.split('::');
-         let poolQuery = supabase.from('players')
-            .select('id, name, detailed_position, age, overall, nationality, value_amount, value_str, clubs!inner(name, league_id)')
-            .eq('nationality', nat)
-            .eq('clubs.league_id', leagueId);
 
-         if (mainPos !== 'Cualquiera') {
-             poolQuery = poolQuery.ilike('position', `%${mainPos}%`);
-         }
+  for (const [key, pool] of poolMap) {
+    // Early skip: pools too large will have near-zero probability
+    if (pool.length > 500) continue;
 
-         const { data, error } = await poolQuery.limit(1500);
-         if (!error && data) {
-             uniquePools.set(key, data);
-         }
-     }));
-  }
+    // Check coverage: does this pool contain all target positions?
+    const coveredPos = new Set(pool.map((p: any) => p.detailed_position));
+    if (!dbTargets.every(tp => coveredPos.has(tp))) continue;
 
-  // Calculate probabilities locally
-  for (const c of validCombos) {
-      const poolData = uniquePools.get(`${c.nat}::${c.leagueId}`) || [];
-      let pool = poolData;
+    // Calculate probability
+    const prob = calculateSmartProbability(pool, dbTargets);
+    if (prob < 2) continue;
 
-      if (c.age !== 'Cualquiera') {
-          const [minA, maxA] = getAgeBounds(c.age);
-          pool = pool.filter(p => p.age >= minA && p.age <= maxA);
-      }
+    const [nat, leagueId, age, qual] = key.split('::');
+    const leagueName = pool[0].clubs.leagues.name;
 
-      const [minQ, maxQ] = getQualityBounds(c.qual);
-      if (!isWorldStar) {
-          pool = pool.filter(p => p.overall >= minQ && p.overall <= maxQ);
-      }
+    const matchingPlayers = pool.filter((p: any) => dbTargets.includes(p.detailed_position));
+    const noisePlayers = pool.filter((p: any) => !dbTargets.includes(p.detailed_position));
 
-      if (pool.length === 0) continue;
-
-      const dbTargets = activeTargets.map(toDBPos);
-      const matchingCount = pool.filter(p => dbTargets.includes(p.detailed_position)).length;
-      const prob = calculateSmartProbability(pool, dbTargets);
-      
-      if (prob >= 2) {
-          const matchingPlayers = pool.filter(p => dbTargets.includes(p.detailed_position));
-          const noisePlayers = pool.filter(p => !dbTargets.includes(p.detailed_position));
-          
-          results.push({
-              filters: { pos: mainPos, ageRange: c.age, qualityRange: c.qual, nationality: c.nat, league: c.leagueName },
-              probability: prob,
-              totalMatching: pool.length,
-              noiseCount: pool.length - matchingCount,
-              matchingPlayers: matchingPlayers.slice(0, 15),
-              noisePlayers: noisePlayers.slice(0, 10),
-              coveredPositions: activeTargets,
-          });
-      }
+    results.push({
+      filters: { pos: mainPos, ageRange: age, qualityRange: qual, nationality: nat, league: leagueName },
+      probability: prob,
+      totalMatching: pool.length,
+      noiseCount: pool.length - matchingPlayers.length,
+      matchingPlayers: matchingPlayers.slice(0, 15),
+      noisePlayers: noisePlayers.slice(0, 10),
+      coveredPositions: activeTargets,
+    });
   }
 
   return results
