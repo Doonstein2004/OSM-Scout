@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, StatusBar, ScrollView, TouchableOpacity, Text, Modal, FlatList } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import {
     HeroUINativeProvider,
     Tabs,
@@ -394,10 +394,12 @@ export default function App() {
     };
 
     return (
-        <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#020617' }}>
-            <HeroUINativeProvider>
-                <SafeAreaView style={{ flex: 1 }}>
-                    <StatusBar barStyle="light-content" backgroundColor="#020617" />
+        <SafeAreaProvider>
+            <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#020617' }}>
+                <HeroUINativeProvider>
+                    <SafeAreaView style={{ flex: 1 }}>
+                        <StatusBar barStyle="light-content" backgroundColor="#020617" />
+
 
                     <View className="px-6 pt-6 pb-4 border-b border-white/10 flex-row justify-between items-center bg-slate-950">
                         <View className="flex-1 mr-4">
@@ -1413,5 +1415,6 @@ export default function App() {
                 </View>
             )}
         </GestureHandlerRootView>
+        </SafeAreaProvider>
     );
 }
