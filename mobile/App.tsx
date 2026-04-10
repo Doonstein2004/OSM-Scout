@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StatusBar, ScrollView, TouchableOpacity, Text, Modal, FlatList } from 'react-native';
+import { View, StatusBar, ScrollView, TouchableOpacity, Text, Modal, FlatList, Alert } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import {
     HeroUINativeProvider,
@@ -13,6 +13,7 @@ import {
 } from 'heroui-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { FadeInUp, LinearTransition } from 'react-native-reanimated';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './lib/supabase';
 import './lib/i18n';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +23,21 @@ import './global.css';
 
 export default function App() {
     const { t, i18n } = useTranslation();
+
+    const formatPrice = (amount: number) => {
+        if (amount >= 1000000) return (amount / 1000000).toFixed(1) + 'M';
+        if (amount >= 1000) return (amount / 1000).toFixed(0) + 'K';
+        return amount.toString();
+    };
+
+    const getEstMultiplier = (p: any) => {
+        const hash = p.name ? p.name.length : 5;
+        const noise = (hash % 10) / 100;
+        const val = p.value_amount || 0;
+        const norm = Math.min(val / 25000000, 1);
+        let mul = 1.25 + (norm * 0.05) + noise; 
+        return Math.max(1.25, Math.min(1.40, mul));
+    };
 
     // Desactivar logs en producción para mayor velocidad
     if (!__DEV__) {
@@ -76,6 +92,9 @@ export default function App() {
     const [smartQualityRange, setSmartQualityRange] = useState<string | null>(null);
     const [visibleTripsCount, setVisibleTripsCount] = useState<number>(30);
 
+    // Saved Filters
+    const [savedFilters, setSavedFilters] = useState<any[]>([]);
+
     // Selector Data
     const [nationalities, setNationalities] = useState<string[]>([]);
     const [leagues, setLeagues] = useState<any[]>([]);
@@ -95,6 +114,18 @@ export default function App() {
         onSelect: () => { },
         renderLabel: () => ''
     });
+
+    useEffect(() => {
+        const loadSaved = async () => {
+            try {
+                const data = await AsyncStorage.getItem('savedFilters');
+                if (data) setSavedFilters(JSON.parse(data));
+            } catch (error) {
+                console.error("Error loading saved filters", error);
+            }
+        };
+        loadSaved();
+    }, []);
 
     useEffect(() => {
         const fetchOptions = async () => {
@@ -289,6 +320,122 @@ export default function App() {
         setGeneratedTrips([]);
     };
 
+    const saveCurrentFilter = async () => {
+        const parts = [];
+        if (filterPos.length) parts.push(filterPos.map(p => t(p)).join(', '));
+        if (filterDetailedPos.length) parts.push(filterDetailedPos.map(p => t(p)).join(', '));
+        if (filterAge.length) parts.push(filterAge.join(', '));
+        if (filterQuality.length) parts.push(filterQuality.join(', '));
+        if (filterNationality) parts.push(filterNationality);
+        if (filterLeague) parts.push(filterLeague.name);
+        if (filterClub) parts.push(filterClub.name);
+        if (filterExactAge) parts.push(`${t('age')}: ${filterExactAge}`);
+        if (filterExactQuality) parts.push(`OVR: ${filterExactQuality}`);
+
+        const name = parts.join(', ') || 'Global';
+
+        const newFilter = {
+            id: Date.now().toString(),
+            name,
+            filters: {
+                filterPos,
+                filterDetailedPos,
+                filterAge,
+                filterQuality,
+                filterExactAge,
+                filterExactQuality,
+                filterNationality,
+                filterLeague,
+                filterClub
+            }
+        };
+
+        const newSaved = [...savedFilters, newFilter];
+        setSavedFilters(newSaved);
+        try {
+            await AsyncStorage.setItem('savedFilters', JSON.stringify(newSaved));
+            Alert.alert(t('filter_saved', '¡Filtro Guardado!'), t('saved_empty_desc', 'Guardado en tus Listas.'));
+        } catch (e) {
+            console.error("Error saving filters", e);
+        }
+    };
+
+    const saveSmartFilter = async (magicResult: any) => {
+        const osmFilter = magicResult.filters || magicResult;
+        const fPos = osmFilter.pos !== 'Cualquiera' && osmFilter.pos ? [osmFilter.pos] : [];
+        const fAge = osmFilter.ageRange !== 'Cualquiera' && osmFilter.ageRange ? [osmFilter.ageRange] : [];
+        const fQual = osmFilter.qualityRange !== 'Cualquiera' && osmFilter.qualityRange ? [osmFilter.qualityRange] : [];
+        const fNat = osmFilter.nationality !== 'Cualquiera' && osmFilter.nationality ? osmFilter.nationality : null;
+        const leagueObj = osmFilter.league !== 'Cualquiera' && osmFilter.league ? leagues.find(l => l.name === osmFilter.league) || { id: osmFilter.league, name: osmFilter.league } : null;
+
+        const parts = [];
+        if (fPos.length) parts.push(fPos.map((p: string) => t(p)).join(', '));
+        if (fAge.length) parts.push(fAge.join(', '));
+        if (fQual.length) parts.push(fQual.join(', '));
+        if (fNat) parts.push(fNat);
+        if (osmFilter.league && osmFilter.league !== 'Cualquiera') parts.push(osmFilter.league);
+
+        const name = parts.join(', ') || 'Smart Filter';
+
+        const newFilter = {
+            id: Date.now().toString(),
+            name: `🪄 ${name}`,
+            filters: {
+                filterPos: fPos,
+                filterDetailedPos: [],
+                filterAge: fAge,
+                filterQuality: fQual,
+                filterExactAge: '',
+                filterExactQuality: '',
+                filterNationality: fNat,
+                filterLeague: leagueObj,
+                filterClub: null
+            },
+            results: magicResult.matchingPlayers ? magicResult.matchingPlayers.slice(0, 3) : []
+        };
+
+        const newSaved = [...savedFilters, newFilter];
+        setSavedFilters(newSaved);
+        try {
+            await AsyncStorage.setItem('savedFilters', JSON.stringify(newSaved));
+            Alert.alert(t('filter_saved', '¡Filtro Guardado!'), t('saved_empty_desc', 'Estará disponible en la pestaña Listas.'));
+        } catch (e) {
+            console.error("Error saving filters", e);
+        }
+    };
+
+    const loadFilter = (f: any) => {
+        if (f.name && f.name.includes('🪄')) {
+            setSmartNationality(f.filters.filterNationality);
+            setSmartAgeRange(f.filters.filterAge[0] || null);
+            setSmartQualityRange(f.filters.filterQuality[0] || null);
+            setTargetPositions(f.filters.filterPos);
+            setSmartMode('positions');
+            setActiveTab('smart');
+        } else {
+            setFilterPos(f.filters.filterPos);
+            setFilterDetailedPos(f.filters.filterDetailedPos);
+            setFilterAge(f.filters.filterAge);
+            setFilterQuality(f.filters.filterQuality);
+            setFilterExactAge(f.filters.filterExactAge);
+            setFilterExactQuality(f.filters.filterExactQuality);
+            setFilterNationality(f.filters.filterNationality);
+            setFilterLeague(f.filters.filterLeague);
+            setFilterClub(f.filters.filterClub);
+            setActiveTab('scout');
+        }
+    };
+
+    const deleteFilter = async (id: string) => {
+        const newSaved = savedFilters.filter(f => f.id !== id);
+        setSavedFilters(newSaved);
+        try {
+            await AsyncStorage.setItem('savedFilters', JSON.stringify(newSaved));
+        } catch (e) {
+            console.error("Error saving after delete", e);
+        }
+    };
+
     const resetFilters = () => {
         setFilterPos([]);
         setFilterDetailedPos([]);
@@ -435,6 +582,9 @@ export default function App() {
                                 <Tabs.Trigger value="leagues" className="px-4 py-2 ml-2">
                                     <Tabs.Label className={`font-black text-xs ${activeTab === 'leagues' ? 'text-white' : 'text-slate-500'}`}>{t('leagues').toUpperCase()}</Tabs.Label>
                                 </Tabs.Trigger>
+                                <Tabs.Trigger value="lists" className="px-4 py-2 ml-2">
+                                    <Tabs.Label className={`font-black text-xs ${activeTab === 'lists' ? 'text-amber-400' : 'text-amber-900'}`}>{t('saved_lists').toUpperCase()}</Tabs.Label>
+                                </Tabs.Trigger>
                             </Tabs.ScrollView>
                         </Tabs.List>
 
@@ -528,7 +678,7 @@ export default function App() {
                                         {/* Quality Filter (Horizontal) */}
                                         <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2 pl-1">{t('quality_range')}</Text>
                                         <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-6" contentContainerStyle={{ gap: 8, paddingRight: 20 }}>
-                                            {['+100', '85-99', '80-84', '75-79', '70-74', '60-69', '50-59'].map(qual => (
+                                            {['85-99', '80-84', '75-79', '70-74', '60-69', '50-59'].map(qual => (
                                                 <TouchableOpacity key={qual} onPress={() => toggleArrayItem(setFilterQuality, qual)}>
                                                     <View className={`border rounded-xl h-10 px-3 justify-center items-center ${filterQuality.includes(qual) ? 'bg-amber-500/20 border-amber-500/60 shadow-lg shadow-amber-500/20' : 'bg-white/5 border-white/10'}`}>
                                                         <Text className={`${filterQuality.includes(qual) ? 'text-amber-400 font-black' : 'text-slate-300 font-medium'} text-xs`}>
@@ -578,9 +728,14 @@ export default function App() {
 
                                         <View className="flex-row gap-2 mt-2">
                                             {(filterPos.length > 0 || filterAge.length > 0 || filterQuality.length > 0 || filterNationality || filterLeague || filterClub || filterExactAge || filterExactQuality) && (
-                                                <Button variant="outline" onPress={resetFilters} className="bg-transparent border border-white/10 h-12 rounded-2xl px-4 flex-[0.5]">
-                                                    <Button.Label className="text-white/70 font-bold text-xs">{t('clean')}</Button.Label>
-                                                </Button>
+                                                <>
+                                                    <Button variant="outline" onPress={saveCurrentFilter} className="bg-transparent border border-amber-500/40 h-12 rounded-2xl px-4 flex-[0.5] shadow-lg shadow-amber-500/10">
+                                                        <Button.Label className="text-amber-400 font-bold text-xs">💾</Button.Label>
+                                                    </Button>
+                                                    <Button variant="outline" onPress={resetFilters} className="bg-transparent border border-white/10 h-12 rounded-2xl px-4 flex-[0.5]">
+                                                        <Button.Label className="text-white/70 font-bold text-xs">{t('clean')}</Button.Label>
+                                                    </Button>
+                                                </>
                                             )}
                                             <Button onPress={() => fetchPlayers(0, true)} className="flex-1 bg-emerald-500 h-12 rounded-2xl shadow-xl shadow-emerald-500/20">
                                                 <Button.Label className="text-black font-black tracking-widest text-xs">{t('search_players')} 🔍</Button.Label>
@@ -690,8 +845,15 @@ export default function App() {
                                                                             🛡️ <Text className="text-white">{player.club?.name || '-'}</Text>  /  🏆 {player.club?.league?.name?.slice(0, 18) || '-'}
                                                                         </Text>
                                                                     </View>
-                                                                    <View className="bg-emerald-500/20 h-6 px-3 rounded-full justify-center border border-emerald-500/30">
-                                                                        <Text className="text-emerald-400 font-black text-[10px]">{player.value_str || player.value_amount}</Text>
+                                                                    <View className="flex-col items-end">
+                                                                        <View className="bg-emerald-500/20 h-6 px-3 rounded-full justify-center border border-emerald-500/30">
+                                                                            <Text className="text-emerald-400 font-black text-[10px]">{player.value_str || (player.value_amount ? formatPrice(player.value_amount) : '-')}</Text>
+                                                                        </View>
+                                                                        {player.overall < 100 && player.value_amount && (
+                                                                            <Text className="text-[9px] text-emerald-300 mt-1 uppercase font-black tracking-tighter">
+                                                                                Est: 💰 {formatPrice(player.value_amount * getEstMultiplier(player))}
+                                                                            </Text>
+                                                                        )}
                                                                     </View>
                                                                 </View>
                                                             </Surface>
@@ -775,7 +937,12 @@ export default function App() {
 
                                                         <View className="gap-4 w-full">
                                                             <View className="bg-white/5 p-5 rounded-3xl border border-white/5 w-full">
-                                                                <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">{t('magic_filters')}</Text>
+                                                                <View className="flex-row justify-between items-center mb-3">
+                                                                    <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest">{t('magic_filters')}</Text>
+                                                                    <TouchableOpacity onPress={() => saveSmartFilter(combinationResult)} className="bg-amber-500/20 px-3 py-1.5 rounded-xl border border-amber-500/30">
+                                                                        <Text className="text-amber-400 font-bold text-[10px]">💾 {t('save_filter')}</Text>
+                                                                    </TouchableOpacity>
+                                                                </View>
                                                                 <View className="flex-row flex-wrap gap-2">
                                                                     {Object.entries(combinationResult.filters).map(([key, val]: [string, any]) => (
                                                                         <View key={key} className="bg-indigo-500/20 border border-indigo-500/30 px-3 py-1 rounded-full">
@@ -820,7 +987,9 @@ export default function App() {
                                                                                     <View className="flex-row gap-2 mt-1">
                                                                                         <Text className="text-slate-500 text-[8px] uppercase font-bold">{t('age')}: <Text className="text-slate-300">{p.age}</Text></Text>
                                                                                         <Text className="text-slate-500 text-[8px] uppercase font-bold">{t('team')}: <Text className="text-slate-300">{p.club?.name || '-'}</Text></Text>
-                                                                                        <Text className="text-slate-500 text-[8px] uppercase font-bold">{t('value')}: <Text className="text-emerald-500/60">{p.value_str || (p.value_amount ? (p.value_amount / 1000000).toFixed(1) + 'M' : '-')}</Text></Text>
+                                                                                        <Text className="text-slate-500 text-[8px] uppercase font-bold">{t('value')}: <Text className="text-emerald-500/60">{p.value_str || (p.value_amount ? formatPrice(p.value_amount) : '-')}</Text>
+                                                                                            {p.overall < 100 && p.value_amount && ( <Text className="text-emerald-300"> • Est: {formatPrice(p.value_amount * getEstMultiplier(p))}</Text> )}
+                                                                                        </Text>
                                                                                     </View>
                                                                                 </View>
                                                                             );
@@ -927,7 +1096,12 @@ export default function App() {
                                                 {(Array.isArray(generatedTrips) ? (generatedTrips as any[]) : (generatedTrips as any).recommendations).slice(0, visibleTripsCount).map((trip: any, tIdx: number) => (
                                                     <View key={tIdx} className={`mb-6 p-5 rounded-3xl border w-full ${trip.probability >= 50 ? 'bg-emerald-500/10 border-emerald-500/20' : trip.probability >= 15 ? 'bg-amber-500/10 border-amber-500/20' : 'bg-white/5 border-white/10'}`}>
                                                         <View className="flex-row justify-between items-center mb-3">
-                                                            <Text className="text-white font-black uppercase text-xs">{t('options')} #{tIdx + 1}</Text>
+                                                            <View className="flex-row items-center gap-3">
+                                                                <Text className="text-white font-black uppercase text-xs">{t('options')} #{tIdx + 1}</Text>
+                                                                <TouchableOpacity onPress={() => saveSmartFilter(trip)} className="bg-amber-500/20 px-2 py-1 rounded-lg border border-amber-500/30">
+                                                                    <Text className="text-amber-400 font-bold text-[10px]">💾 {t('save_filter')}</Text>
+                                                                </TouchableOpacity>
+                                                            </View>
                                                             <View className={`px-2 py-0.5 rounded ${trip.probability >= 50 ? 'bg-emerald-500' : trip.probability >= 15 ? 'bg-amber-400' : 'bg-slate-700'}`}>
                                                                 <Text className={`font-black text-[10px] ${trip.probability >= 15 ? 'text-black' : 'text-white'}`}>{Math.round(trip.probability)}% PROB</Text>
                                                             </View>
@@ -996,7 +1170,9 @@ export default function App() {
                                                                     <View className="flex-row gap-3 mt-1.5">
                                                                         <Text className="text-[8px] uppercase font-black text-slate-100/40">{t('age')}: <Text className="text-slate-100">{p.age}</Text></Text>
                                                                         <Text className="text-[8px] uppercase font-black text-slate-100/40" numberOfLines={1} style={{ maxWidth: '40%' }}>{t('team')}: <Text className="text-slate-100">{p.clubs?.name || p.club?.name || '-'}</Text></Text>
-                                                                        <Text className="text-[8px] uppercase font-black text-slate-100/40">{t('value')}: <Text className={`${p.isTarget ? 'text-emerald-400 font-black' : 'text-orange-400 font-black'}`}>{p.value_str || (p.value_amount ? (p.value_amount / 1000000).toFixed(1) + 'M' : '-')}</Text></Text>
+                                                                        <Text className="text-[8px] uppercase font-black text-slate-100/40">{t('value')}: <Text className={`${p.isTarget ? 'text-emerald-400 font-black' : 'text-orange-400 font-black'}`}>{p.value_str || (p.value_amount ? formatPrice(p.value_amount) : '-')}</Text>
+                                                                            {p.overall < 100 && p.value_amount && ( <Text className="text-emerald-300 whitespace-nowrap"> • Est: {formatPrice(p.value_amount * getEstMultiplier(p))}</Text> )}
+                                                                        </Text>
                                                                     </View>
                                                                 </View>
                                                             ))}
@@ -1027,6 +1203,60 @@ export default function App() {
                                             <Text className="text-white/50 text-center my-10 italic">{t('mining_desc')}</Text>
                                         )}
                                     </View>
+                                )}
+                            </ScrollView>
+                        </Tabs.Content>
+
+                        <Tabs.Content value="lists" style={{ flex: 1, width: '100%' }}>
+                            <ScrollView className="px-6 py-4 flex-1 w-full bg-[#020617]" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+                                <View className="flex-row items-center justify-between mb-2">
+                                    <Text className="text-3xl font-black text-white px-2 mt-2">{t('saved_lists').toUpperCase()}</Text>
+                                    <View className="bg-amber-500/20 w-12 h-12 rounded-2xl items-center justify-center border border-amber-500/30">
+                                        <Text className="text-2xl">💾</Text>
+                                    </View>
+                                </View>
+                                <Text className="text-slate-400 text-sm mb-6 leading-relaxed px-2">{t('saved_empty_desc')}</Text>
+
+                                {savedFilters.length === 0 ? (
+                                    <View className="py-20 items-center justify-center opacity-40">
+                                        <Text className="text-6xl mb-4">📭</Text>
+                                        <Text className="text-white text-center font-bold text-sm">Vacío</Text>
+                                    </View>
+                                ) : (
+                                    savedFilters.map((filter, index) => (
+                                        <Animated.View key={filter.id} entering={FadeInUp.delay(index * 50)} className="bg-white/5 border border-white/10 rounded-3xl p-5 mb-4 shadow-lg shadow-black/40">
+                                            <View className="flex-row items-center justify-between mb-4">
+                                                <Text className="text-white font-black text-xl flex-1 pr-2 leading-tight" numberOfLines={2}>
+                                                    {filter.name}
+                                                </Text>
+                                            </View>
+                                            {filter.results && filter.results.length > 0 && (
+                                                <View className="flex-row flex-wrap gap-2 mb-3 mt-1">
+                                                    {filter.results.map((p: any) => (
+                                                        <View key={p.id} className="bg-black/30 border border-white/5 rounded-lg pl-3 pr-2 py-1.5 flex-row items-center">
+                                                            <Text className="text-xs text-white font-bold mr-2">{p.name}</Text>
+                                                            <View className="bg-emerald-500 px-1.5 py-0.5 rounded"><Text className="text-black font-black text-[9px]">{p.overall}</Text></View>
+                                                        </View>
+                                                    ))}
+                                                </View>
+                                            )}
+                                            <View className="flex-row gap-2 mt-2 pt-4 border-t border-white/5">
+                                                <Button 
+                                                    className="flex-[2] bg-emerald-500 h-12 rounded-2xl shadow-lg shadow-emerald-500/20"
+                                                    onPress={() => loadFilter(filter)}
+                                                >
+                                                    <Button.Label className="text-black font-black uppercase tracking-widest text-xs">{t('load')}</Button.Label>
+                                                </Button>
+                                                <Button 
+                                                    variant="outline"
+                                                    className="flex-1 bg-red-500/10 border border-red-500/30 h-12 rounded-2xl px-4"
+                                                    onPress={() => deleteFilter(filter.id)}
+                                                >
+                                                    <Button.Label className="text-red-400 font-bold uppercase tracking-widest text-xs">{t('delete')}</Button.Label>
+                                                </Button>
+                                            </View>
+                                        </Animated.View>
+                                    ))
                                 )}
                             </ScrollView>
                         </Tabs.Content>
