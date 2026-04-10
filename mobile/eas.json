@@ -6,7 +6,12 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "node": "20.18.3",
+      "pnpm": "10.4.1",
+      "android": {
+        "buildType": "apk"
+      }
     },
     "preview": {
       "node": "20.18.3",
