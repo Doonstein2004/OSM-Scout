@@ -227,3 +227,22 @@ export function getFlag(name: string): string {
   
   return "🌍";
 }
+
+/**
+ * Converts a display country name to the shortest stem for ilike DB matching.
+ * 'Argentina' => 'argentin'  (matches 'Argentine', 'Argentinian')
+ * 'Brazil'    => 'brazil'    (matches 'Brazilian')
+ * The stem is lowercased; use it as: .ilike('nationality', `%${stem}%`)
+ */
+export function toNatStem(name: string): string {
+    if (!name) return '';
+    let s = name.toLowerCase().trim();
+    // Remove common country-name suffixes to reach the adjectival root
+    const suffixes = ['inia', 'olia', 'onia', 'alia', 'eria', 'uria', 'ania', 'ina', 'ia', 'na', 'land', 'stan'];
+    for (const suf of suffixes) {
+        if (s.endsWith(suf) && s.length - suf.length >= 4) {
+            return s.slice(0, s.length - suf.length);
+        }
+    }
+    return s;
+}
