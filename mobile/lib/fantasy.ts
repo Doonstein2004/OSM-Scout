@@ -182,6 +182,30 @@ const matchesSlot = (p: Player, slot: PositionSlot): boolean => {
     return slot.positions.map(s => s.toUpperCase()).includes(dp);
 };
 
+// ── Randomization helpers ───────────────────────────────────────────────────────
+/** Fisher-Yates in place shuffle */
+const shuffle = <T>(arr: T[]): T[] => {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+};
+
+/**
+ * Picks a random player from the cheapest N candidates that fit within perSlotBudget.
+ * If fewer than mink candidates exist, falls back to the cheapest one.
+ * This ensures every run produces a different initial allocation while
+ * still staying within budget.
+ */
+const stochasticPick = (candidates: Player[], perSlotBudget: number, topN = 6): Player | undefined => {
+    const affordable = candidates.filter(p => p.value_amount <= perSlotBudget);
+    if (affordable.length === 0) return candidates[0]; // take cheapest even if over budget
+    const sorted = affordable.sort((a, b) => a.value_amount - b.value_amount);
+    const pool = sorted.slice(0, topN);
+    return pool[Math.floor(Math.random() * pool.length)];
+};
+
 // ── Main algorithm ─────────────────────────────────────────────────────────────
 export const generateFantasySquad = (pool: Player[], config: FantasyConfig): SquadResult => {
     const warnings: string[] = [];
@@ -235,30 +259,39 @@ export const generateFantasySquad = (pool: Player[], config: FantasyConfig): Squ
                  warnings };
     }
 
-    // 4. Initial allocation — pick cheapest available per slot
+    // 4. Shuffle pool so every run sees a different candidate order
+    shuffle(activePool);
+
+    // 5. Initial allocation — stochastic pick from cheapest N per slot
+    //    Each slot gets at most (remainingBudget / slotsLeft) to keep it affordable
     const usedIds = new Set<string>();
     const squadSlots: Array<{ slot: PositionSlot; player: Player }> = [];
     let totalCost = 0;
+    const totalSlots = slots.reduce((s, sl) => s + sl.count, 0);
+    let slotsLeft = totalSlots;
+    let budgetLeft = config.budget;
 
     for (const slot of slots) {
         for (let i = 0; i < slot.count; i++) {
-            const exact = activePool
-                .filter(p => !usedIds.has(p.id) && matchesSlot(p, slot))
-                .sort((a, b) => a.value_amount - b.value_amount);
+            const perSlotBudget = budgetLeft / slotsLeft;
 
-            let pick = exact[0];
+            const exactCandidates = activePool.filter(p => !usedIds.has(p.id) && matchesSlot(p, slot));
+            let pick = stochasticPick(exactCandidates, perSlotBudget);
+
             if (!pick) {
                 // Fallback to same genPos
-                const fallback = activePool
-                    .filter(p => !usedIds.has(p.id) && getGenPos(p.detailed_position, p.position) === slot.genPos)
-                    .sort((a, b) => a.value_amount - b.value_amount);
-                pick = fallback[0];
+                const fallback = activePool.filter(p =>
+                    !usedIds.has(p.id) && getGenPos(p.detailed_position, p.position) === slot.genPos
+                );
+                pick = stochasticPick(fallback, perSlotBudget) ?? fallback[0];
             }
-            if (!pick) continue; // already checked canFillSlots so this shouldn't happen
+            if (!pick) continue;
 
             usedIds.add(pick.id);
             squadSlots.push({ slot, player: pick });
             totalCost += pick.value_amount;
+            budgetLeft -= pick.value_amount;
+            slotsLeft--;
         }
     }
 
@@ -324,7 +357,40 @@ export const generateFantasySquad = (pool: Player[], config: FantasyConfig): Squ
         }
     }
 
-    // 6. Build final squad ordered by GK → DEF → MID → FWD
+    // 6. Variation pass — randomly swap ~35% of slots with equal/similar-OVR alternatives.
+    //    This ensures different results across runs even with identical filters,
+    //    while keeping overall quality almost identical (OVR ±1 swaps).
+    const VARIATION_SLOTS = Math.max(2, Math.floor(squadSlots.length * 0.35));
+    const slotIndices = shuffle([...Array(squadSlots.length).keys()]);
+    let swapsDone = 0;
+
+    for (const i of slotIndices) {
+        if (swapsDone >= VARIATION_SLOTS) break;
+        const { slot, player: current } = squadSlots[i];
+
+        // Alternatives: exact position match, OVR within ±1, not used, fits budget
+        const alternatives = activePool.filter(p =>
+            !usedIds.has(p.id) &&
+            matchesSlot(p, slot) &&
+            Math.abs(p.overall - current.overall) <= 1 &&
+            p.value_amount - current.value_amount <= remainingBudget &&
+            p.id !== current.id
+        );
+
+        if (alternatives.length === 0) continue;
+
+        const alt = alternatives[Math.floor(Math.random() * alternatives.length)];
+        const costDelta = alt.value_amount - current.value_amount;
+
+        usedIds.delete(current.id);
+        usedIds.add(alt.id);
+        squadSlots[i] = { ...squadSlots[i], player: alt };
+        totalCost += costDelta;
+        remainingBudget -= costDelta;
+        swapsDone++;
+    }
+
+    // 7. Build final squad ordered by GK → DEF → MID → FWD
     const order: ('GK'|'DEF'|'MID'|'FWD')[] = ['GK','DEF','MID','FWD'];
     const finalSquad = order.flatMap(gen =>
         squadSlots
