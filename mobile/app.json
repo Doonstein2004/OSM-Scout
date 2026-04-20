@@ -31,8 +31,7 @@
       "permissions": [
         "INTERNET"
       ],
-      "softwareKeyboardLayoutMode": "pan",
-      "compressResources": true
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "favicon": "./assets/favicon.png"
