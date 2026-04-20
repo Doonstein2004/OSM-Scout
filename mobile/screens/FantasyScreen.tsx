@@ -290,7 +290,7 @@ export default function FantasyScreen() {
                 </Button>
             </View>
 
-            {fantasyResult && fantasyResult.squad && fantasyResult.squad.length > 0 && (
+            {!!fantasyResult && !!fantasyResult.squad && fantasyResult.squad.length > 0 && (
                 <Animated.View entering={FadeInUp} className="w-full mt-6">
                     <View className="flex-row justify-between items-center mb-4">
                         <Text className="text-white font-black text-xl">{t('fantasy_squad').toUpperCase()}</Text>

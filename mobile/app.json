@@ -8,6 +8,10 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#000000",
     "newArchEnabled": true,
+    "scheme": "osm-scout",
+    "plugins": [
+      "expo-router"
+    ],
     "splash": {
       "image": "./assets/splash.jpg",
       "resizeMode": "contain",

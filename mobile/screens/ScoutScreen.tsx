@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { getFlag, toNatStem } from '../lib/flags';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../context/StoreContext';
+import { ScoutSkeleton } from '../components/ScoutSkeleton';
 import { getCachedLastSearch, setCachedLastSearch } from '../lib/cache';
 import { useNetworkStatus } from '../lib/useNetworkStatus';
 import { memo } from 'react';
@@ -429,12 +430,12 @@ nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
                 </View>
 
                 <View className="flex-row gap-2 mt-2">
-                    {(filterPos.length > 0 || filterAge.length > 0 || filterQuality.length > 0 || filterNationality || filterLeague || filterClub || filterExactAge || filterExactQuality) && (
+                    {!!(filterPos.length > 0 || filterAge.length > 0 || filterQuality.length > 0 || filterNationality || filterLeague || filterClub || filterExactAge || filterExactQuality) && (
                         <>
-                            <Button variant="outline" onPress={saveCurrentFilter} className="bg-transparent border border-amber-500/40 h-12 rounded-2xl px-4 flex-[0.5] shadow-lg shadow-amber-500/10">
+                            <Button variant="outline" onPress={saveCurrentFilter} className="bg-slate-900/50 border border-amber-500/40 h-12 rounded-2xl px-4 flex-[0.5] shadow-lg shadow-amber-500/10">
                                 <Button.Label className="text-amber-400 font-bold text-xs">💾</Button.Label>
                             </Button>
-                            <Button variant="outline" onPress={resetFilters} className="bg-transparent border border-white/10 h-12 rounded-2xl px-4 flex-[0.5]">
+                            <Button variant="outline" onPress={resetFilters} className="bg-slate-900/50 border border-white/10 h-12 rounded-2xl px-4 flex-[0.5]">
                                 <Button.Label className="text-white/70 font-bold text-xs">{t('clean')}</Button.Label>
                             </Button>
                         </>
@@ -491,12 +492,6 @@ nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
                     {players.length} {t('results_found')}
                 </Text>
 
-                {players.length === 0 && !loading && (
-                    <View className="items-center justify-center py-10 opacity-40">
-                        <Text className="text-5xl mb-3">👻</Text>
-                        <Text className="text-white text-sm font-bold text-center leading-relaxed">{t('no_players_desc')}</Text>
-                    </View>
-                )}
             </View>
         </View>
     );
@@ -556,6 +551,16 @@ nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
                 )}
                 ListHeaderComponent={ListHeader}
                 ListFooterComponent={ListFooter}
+                ListEmptyComponent={() => (
+                    loading ? <ScoutSkeleton /> : (
+                        (players.length === 0 && !loading) ? (
+                            <View className="items-center justify-center py-20 opacity-40">
+                                <Text className="text-5xl mb-3">👻</Text>
+                                <Text className="text-white text-sm font-bold text-center leading-relaxed">{t('no_players_desc')}</Text>
+                            </View>
+                        ) : null
+                    )
+                )}
                 showsVerticalScrollIndicator={false}
                 initialNumToRender={10}
                 maxToRenderPerBatch={10}
