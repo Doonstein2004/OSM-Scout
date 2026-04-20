@@ -7,21 +7,21 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "node": "20.18.3",
+      "node": "22.14.0",
       "pnpm": "10.4.1",
       "android": {
         "buildType": "apk"
       }
     },
     "preview": {
-      "node": "20.18.3",
+      "node": "22.14.0",
       "pnpm": "10.4.1",
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
-      "node": "20.18.3",
+      "node": "22.14.0",
       "pnpm": "10.4.1",
       "autoIncrement": true,
       "android": {
