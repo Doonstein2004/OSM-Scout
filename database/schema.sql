@@ -43,7 +43,21 @@ CREATE TABLE players (
 CREATE INDEX idx_players_club_id ON players(club_id);
 CREATE INDEX idx_clubs_league_id ON clubs(league_id);
 
--- Disable RLS for easier bot synchronization (Optional for private projects)
-ALTER TABLE leagues DISABLE ROW LEVEL SECURITY;
-ALTER TABLE clubs DISABLE ROW LEVEL SECURITY;
-ALTER TABLE players DISABLE ROW LEVEL SECURITY;
+SELECT tablename, rowsecurity
+FROM pg_tables
+WHERE schemaname = 'public';
+
+[
+  {
+    "tablename": "leagues",
+    "rowsecurity": true
+  },
+  {
+    "tablename": "clubs",
+    "rowsecurity": true
+  },
+  {
+    "tablename": "players",
+    "rowsecurity": true
+  }
+]
