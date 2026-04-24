@@ -13,33 +13,49 @@ import dotenv
 log_filename = "scraper.log"
 error_filename = "errors.log"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[
-        logging.FileHandler(log_filename, encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
-# Handler específico para ERRORES y ADVERTENCIAS
+# Handler para ARCHIVO (Todo el detalle)
+file_handler = logging.FileHandler(log_filename, encoding='utf-8')
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+
+# Handler para TERMINAL (Solo lo esencial)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(message)s'))
+
+# Handler específico para ERRORES y ADVERTENCIAS en archivo separado
 error_handler = logging.FileHandler(error_filename, encoding='utf-8')
 error_handler.setLevel(logging.WARNING)
 error_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)d) %(message)s'))
 
-logger = logging.getLogger(__name__)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 logger.addHandler(error_handler)
 
 dotenv.load_dotenv()
 
-LEAGUES_TO_SKIP = [
-    "Africa 2008", "Africa Cup 2025", "African Champions",
-    "Americas Cup 2024", "Asia 2007", "Asia 2024", "Boss Tournament", "Champions Cup 25/26",
-    "Champions Cup RO16 25/26", "Club History A", "Club Stars", "Community League M",
-    "Community League S", "Conference Cup 25/26", "England 19/20", "Europe 2000", "Europe 2024",
-    "Europe Cup 25/26", "Friendly Battle",  "Fantasy 150", "Fantasy Tournament", "Knockout Royale", "LatAm Champions 2025",
-    "Spain 09/10"
-]
+def is_special_league(league_name):
+    name_lower = league_name.lower()
+    special_keywords = [
+        "history", "champions", "tournament", "battle", "royale", 
+        "fantasy", "cup", "team of the season", "quarter-finals", 
+        "semi-finals", "final", "community", "stars", "boss"
+    ]
+    if any(keyword in name_lower for keyword in special_keywords):
+        return True
+        
+    # Buscar patrones de temporadas (ej: 16/17, 25/26) o años de 4 dígitos (ej: 2026, 1996)
+    if re.search(r'\d{2}/\d{2}|\b(?:19|20)\d{2}\b', league_name):
+        return True
+        
+    return False
+
+
+# Configuración para empezar desde una liga específica (poner None para empezar desde el principio)
+START_FROM = "United Arab Emirates"
 
 def parse_value_string(value_str):
     if not isinstance(value_str, str): return 0, "N/A"
@@ -60,14 +76,14 @@ def parse_value_string(value_str):
 
 def parse_player_data(page, expected_club):
     players = []
-    logger.info(f"    🔍 Iniciando extracción de jugadores para: {expected_club}")
+    logger.debug(f"    🔍 Iniciando extracción de jugadores para: {expected_club}")
     try:
         header_selector = 'h2[data-bind="text: name"]'
         try:
             safe_club = expected_club.replace('"', '\\"')
             page.wait_for_selector(f'{header_selector}:has-text("{safe_club}")', timeout=12000)
             actual_name = page.locator(header_selector).inner_text().strip()
-            logger.info(f"    ✅ Confirmado: Estamos en la página de {actual_name}")
+            logger.debug(f"    ✅ Confirmado: Estamos en la página de {actual_name}")
         except Exception:
             logger.warning(f"    ⚠️ No se pudo confirmar el header '{expected_club}' con el selector H2. Intentando continuar...")
             page.wait_for_selector("table.table-sticky", timeout=10000)
@@ -116,11 +132,11 @@ def parse_player_data(page, expected_club):
                         "overall": final_overall, "value_amount": val_amount, "value_str": val_str
                     }
                     players.append(player_obj)
-                    logger.info(f"      - {name} ({pos_detail}) | OVR: {final_overall}")
+                    logger.debug(f"      - {name} ({pos_detail}) | OVR: {final_overall}")
                 except Exception as e:
                     logger.warning(f"      ❌ Fila omitida en {category}: {e}")
             
-            logger.info(f"    📊 {category}: {rows.count()} filas -> {len([p for p in players if p['position'] == category])} válidos.")
+            logger.debug(f"    📊 {category}: {rows.count()} filas -> {len([p for p in players if p['position'] == category])} válidos.")
             
         return players
     except Exception as e:
@@ -144,15 +160,24 @@ def scrape_osm(username, password):
         leagues_data_final = []
         league_rows = page.locator("table#leaguetypes-table tbody tr.clickable")
         num_leagues = league_rows.count()
+        found_start = False if START_FROM else True
         
         for i in range(num_leagues):
             try:
                 row = page.locator("table#leaguetypes-table tbody tr.clickable").nth(i)
                 league_name = row.locator("td span.semi-bold").inner_text().strip()
                 
-                if any(skip.lower() in league_name.lower() for skip in LEAGUES_TO_SKIP):
-                    logger.info(f"⏭️ Saltando Liga: {league_name}")
+                if is_special_league(league_name):
+                    logger.info(f"⏭️ Saltando Liga Especial: {league_name}")
                     continue
+
+                if not found_start:
+                    if START_FROM.lower() in league_name.lower():
+                        found_start = True
+                        logger.info(f"📍 Punto de inicio encontrado: {league_name}")
+                    else:
+                        logger.debug(f"⏭️ Saltando (buscando {START_FROM}): {league_name}")
+                        continue
 
                 country = league_name.split(' 1st')[0].split(' 2nd')[0].split(' Division')[0].strip()
                 logger.info(f"\n🏆 Liga: {league_name} | País: {country}")
@@ -160,7 +185,7 @@ def scrape_osm(username, password):
                 
                 page.wait_for_selector("table#leaguetypes-table thead th", timeout=30000)
                 league_url = page.url # Guardar URL para recuperación
-                logger.info(f"    🔗 URL de la Liga: {league_url}")
+                logger.debug(f"    🔗 URL de la Liga: {league_url}")
                 
                 headers = page.locator("table#leaguetypes-table thead th")
                 header_map = {"club": 0, "obj": 1, "val": 2, "inc": 3}
@@ -180,7 +205,7 @@ def scrape_osm(username, password):
                         club_names.append(name)
                 
                 num_clubs = len(club_names)
-                logger.info(f"    📋 Lista de clubes detectada ({num_clubs}): {', '.join(club_names[:5])}...")
+                logger.debug(f"    📋 Lista de clubes detectada ({num_clubs}): {', '.join(club_names[:5])}...")
                 
                 clubs_in_league = []
 
