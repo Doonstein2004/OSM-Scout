@@ -55,7 +55,7 @@ def is_special_league(league_name):
 
 
 # Configuración para empezar desde una liga específica (poner None para empezar desde el principio)
-START_FROM = "United Arab Emirates"
+START_FROM = None
 
 def parse_value_string(value_str):
     if not isinstance(value_str, str): return 0, "N/A"
