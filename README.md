@@ -35,5 +35,5 @@ Esta es la aplicación móvil de **OSM-Scout**, optimizada para scouting intelig
 
 ## Instalación y Desarrollo
 1. `cd mobile`
-2. `npm install`
+2. `pnpm install`
 3. `npx expo start`
