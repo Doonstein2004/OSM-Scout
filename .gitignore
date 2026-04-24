@@ -49,7 +49,6 @@ test_supabase.py
 *.swo
 
 # Data
-*.json
 !package.json
 !tsconfig.json
 !app.json
