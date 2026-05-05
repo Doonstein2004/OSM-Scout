@@ -16,16 +16,19 @@ if not diff_logger.handlers:
     diff_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
     diff_logger.addHandler(diff_handler)
 
-def retry_supabase_call(func, max_retries=3, delay=2):
+def retry_supabase_call(func, max_retries=3, delay=5):
     def wrapper(*args, **kwargs):
         for i in range(max_retries):
             try:
                 return func(*args, **kwargs)
             except Exception as e:
-                # Check for 502 or network issues
-                if ("502" in str(e) or "Bad gateway" in str(e)) and i < max_retries - 1:
-                    print(f"  ⏳ Supabase 502 detectado. Reintentando en {delay}s... ({i+1}/{max_retries})")
-                    time.sleep(delay)
+                err_msg = str(e)
+                is_retryable = any(msg in err_msg for msg in ["502", "Bad gateway", "10060", "ECONNRESET", "ETIMEDOUT"])
+                
+                if is_retryable and i < max_retries - 1:
+                    wait_time = delay * (i + 1) # Exponential-ish backoff
+                    print(f"  🔌 Error de red/servidor Supabase ({err_msg}). Reintentando en {wait_time}s... ({i+1}/{max_retries})")
+                    time.sleep(wait_time)
                     continue
                 raise e
     return wrapper

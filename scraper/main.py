@@ -154,8 +154,9 @@ def scrape_osm(username, password):
             return
 
         logger.info("✅ Login exitoso. Iniciando scrape...")
-        page.goto("https://en.onlinesoccermanager.com/LeagueTypes")
-        page.wait_for_selector("table#leaguetypes-table tbody tr.clickable", timeout=40000)
+        if not safe_navigate(page, "https://en.onlinesoccermanager.com/LeagueTypes", "table#leaguetypes-table"):
+            logger.error("❌ No se pudo cargar la lista de ligas.")
+            return
         
         leagues_data_final = []
         league_rows = page.locator("table#leaguetypes-table tbody tr.clickable")
@@ -221,7 +222,8 @@ def scrape_osm(username, password):
                             
                             if not current_club_row.is_visible(timeout=5000):
                                 logger.warning(f"    ⚠️ No se visualiza la fila de {club_target}. Recargando liga...")
-                                page.goto(league_url, wait_until="domcontentloaded", timeout=30000)
+                                if not safe_navigate(page, league_url, "table#leaguetypes-table"):
+                                    raise Exception("No se pudo recargar la liga.")
                                 handle_popups(page)
                                 current_club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:has-text(\"{safe_target}\"))").first
 
@@ -285,18 +287,22 @@ def scrape_osm(username, password):
                             
                             handle_popups(page)
                             logger.info(f"    🔄 Intentando recuperar navegando a: {league_url}")
-                            page.goto(league_url, wait_until="domcontentloaded", timeout=30000)
+                            if not safe_navigate(page, league_url, "table#leaguetypes-table"):
+                                logger.error(f"    💥 Fallo crítico recuperando liga {league_url}")
+                                raise Exception(f"No se pudo recuperar la navegación a la liga.")
                             time.sleep(2)
 
                 leagues_data_final.append({"league_name": league_name, "clubs": clubs_in_league})
                 
                 # Ir a la lista de ligas
-                page.goto("https://en.onlinesoccermanager.com/LeagueTypes")
-                page.wait_for_selector("table#leaguetypes-table")
+                if not safe_navigate(page, "https://en.onlinesoccermanager.com/LeagueTypes", "table#leaguetypes-table"):
+                    logger.warning("    ⚠️ No se pudo volver a la lista de ligas normalmente.")
 
             except Exception as e:
                 logger.error(f"💥 Error grave en liga {i}: {e}")
-                page.goto("https://en.onlinesoccermanager.com/LeagueTypes")
+                logger.info("    ⏳ Esperando 15s para estabilizar conexión...")
+                time.sleep(15)
+                safe_navigate(page, "https://en.onlinesoccermanager.com/LeagueTypes", "table#leaguetypes-table", max_retries=5)
 
         # Final save
         with open("osm_data.json", "w", encoding="utf-8") as f:

@@ -2,6 +2,9 @@ from playwright.sync_api import expect, Error as PlaywrightError, Page, TimeoutE
 import time
 import os
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Definimos una excepción personalizada
 class InvalidCredentialsError(Exception):
@@ -73,16 +76,31 @@ def handle_popups(page: Page):
 def safe_navigate(page: Page, url: str, verify_selector: str = None, max_retries=3):
     for attempt in range(max_retries):
         try:
-            page.goto(url, wait_until='load', timeout=30000)
+            logger.debug(f"  🌐 Navegando a {url} (Intento {attempt + 1}/{max_retries})...")
+            # Usamos 'domcontentloaded' por defecto ya que OSM es pesado
+            page.goto(url, wait_until='domcontentloaded', timeout=45000)
+            
             if verify_selector:
-                page.wait_for_selector(verify_selector, timeout=10000)
+                page.wait_for_selector(verify_selector, timeout=15000)
+            
             return True
         except Exception as e:
-            print(f"  ⚠️ Error de navegación ({attempt + 1}/{max_retries}): {e}")
-            time.sleep(2)
-            if attempt < max_retries - 1 and page.url == url:
-                try: page.reload(wait_until='domcontentloaded')
-                except: pass
+            error_str = str(e)
+            is_conn_error = "10060" in error_str or "ECONNRESET" in error_str or "ETIMEDOUT" in error_str
+            
+            wait_time = 10 if is_conn_error else 2
+            logger.warning(f"  ⚠️ Error de navegación ({attempt + 1}/{max_retries}): {error_str}")
+            
+            if attempt < max_retries - 1:
+                if is_conn_error:
+                    logger.info(f"  🔌 Error de conexión detectado. Esperando {wait_time}s antes de reintentar...")
+                
+                time.sleep(wait_time)
+                
+                # Si estamos en la URL correcta pero falló algo, intentar recargar
+                if page.url == url:
+                    try: page.reload(wait_until='domcontentloaded', timeout=30000)
+                    except: pass
     return False
 
 def login_to_osm(page: Page, osm_username: str, osm_password: str, max_retries: int = 3):
