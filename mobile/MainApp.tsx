@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, StatusBar, ScrollView, TouchableOpacity, Text, Modal, FlatList, Alert, TextInput } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import {
@@ -169,14 +169,11 @@ setSelectModal
         fetchOptions();
     }, []);
 
-
-    const isWeb = typeof window !== 'undefined' && window.innerWidth > 800;
-
     return (
         <SafeAreaProvider>
             <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#020617' }}>
                 <HeroUINativeProvider>
-                    <View style={isWeb ? { maxWidth: 600, width: '100%', alignSelf: 'center', flex: 1 } : { flex: 1 }}>
+                    <View className="max-w-[600px] self-center w-full flex-1">
                         <SafeAreaView style={{ flex: 1 }}>
                             <StatusBar barStyle="light-content" backgroundColor="#020617" />
 
