@@ -1,5 +1,6 @@
 import 'intl-pluralrules';
 import 'react-native-url-polyfill/auto';
+import { inject } from '@vercel/analytics';
 import '../lib/i18n';
 import { Stack } from 'expo-router';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -10,6 +11,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useInitializeData } from '../hooks/useInitializeData';
 import { useServiceWorker } from '../hooks/useServiceWorker';
 import '../global.css';
+
+inject({ mode: 'production' });
 
 export const metadata = {
   title: 'OSM Scout Pro | Football Scout Manager',
