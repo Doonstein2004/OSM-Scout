@@ -34,7 +34,19 @@
       "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "themeColor": "#020617",
+      "backgroundColor": "#020617",
+      "meta": {
+        "mobile-web-app-capable": "yes",
+        "apple-mobile-web-app-capable": "yes",
+        "apple-mobile-web-app-status-bar-style": "black-translucent",
+        "apple-mobile-web-app-title": "OSM Scout Pro",
+        "application-name": "OSM Scout Pro",
+        "description": "Scout Manager for Online Soccer Manager - Encuentra los mejores jugadores, analiza equipos y optimiza tu plantilla",
+        "keywords": "OSM, football manager, soccer, scouting, players",
+        "og:image": "https://osm-scout.vercel.app/og-image.png"
+      }
     },
     "extra": {
       "eas": {

@@ -1,0 +1,38 @@
+{
+  "name": "OSM Scout Pro",
+  "short_name": "OSM Scout",
+  "description": "Scout Manager for Online Soccer Manager",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["sports", "games"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Scout Players",
+      "url": "/?tab=scout",
+      "description": "Search and filter players"
+    },
+    {
+      "name": "Smart Analysis",
+      "url": "/?tab=smart",
+      "description": "AI-powered player analysis"
+    }
+  ]
+}

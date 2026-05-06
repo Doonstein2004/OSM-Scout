@@ -170,12 +170,15 @@ setSelectModal
     }, []);
 
 
+    const isWeb = typeof window !== 'undefined' && window.innerWidth > 800;
+
     return (
         <SafeAreaProvider>
             <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#020617' }}>
                 <HeroUINativeProvider>
-                    <SafeAreaView style={{ flex: 1 }}>
-                        <StatusBar barStyle="light-content" backgroundColor="#020617" />
+                    <View style={isWeb ? { maxWidth: 600, width: '100%', alignSelf: 'center', flex: 1 } : { flex: 1 }}>
+                        <SafeAreaView style={{ flex: 1 }}>
+                            <StatusBar barStyle="light-content" backgroundColor="#020617" />
 
 
                     <View className="px-6 pt-6 pb-4 border-b border-white/10 flex-row justify-between items-center bg-slate-950">
@@ -246,9 +249,10 @@ setSelectModal
                         </Tabs.Content>
                     </Tabs>
 
-                </SafeAreaView>
+                    </SafeAreaView>
+                    </View>
 
-                {/* Generic Select Modal */}
+                    {/* Generic Select Modal */}
                 <Modal
                     visible={selectModal.isOpen}
                     transparent={true}
