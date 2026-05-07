@@ -8,9 +8,11 @@ import { supabase } from '../lib/supabase';
 import { findOptimalCombination, discoverCombosForPositions } from '../lib/scouter';
 import { getFlag } from '../lib/flags';
 import { useStore } from '../context/StoreContext';
+import { useSubscription } from '../context/SubscriptionContext';
 
 export default function SmartScreen() {
     const { t } = useTranslation();
+    const { isPro, showPaywall } = useSubscription();
     const {
         targetPlayers,
         setTargetPlayers,
@@ -159,6 +161,81 @@ export default function SmartScreen() {
             </View>
         </View>
     );
+
+    // ── PRO gate: render upsell screen for free users ────────────────────
+    if (!isPro) {
+        return (
+            <ScrollView
+                className="flex-1 w-full bg-[#020617]"
+                contentContainerStyle={{ padding: 24, paddingBottom: 80 }}
+                showsVerticalScrollIndicator={false}
+            >
+                {/* Hero */}
+                <View className="items-center pt-6 pb-8">
+                    <View className="w-24 h-24 rounded-[32px] bg-emerald-500/10 border border-emerald-500/20 items-center justify-center mb-5">
+                        <Text style={{ fontSize: 44 }}>🧠</Text>
+                    </View>
+                    <Text className="text-white font-black text-2xl tracking-tighter mb-2 text-center uppercase">
+                        SMART <Text className="text-emerald-400">Analysis</Text>
+                    </Text>
+                    <Text className="text-slate-400 text-sm text-center leading-relaxed px-4">
+                        Descubre combinaciones óptimas de jugadores y mina la base de datos para encontrar exactamente lo que necesitas.
+                    </Text>
+                </View>
+
+                {/* Feature preview cards */}
+                {[
+                    {
+                        icon: '🎯',
+                        title: 'Modo Jugadores',
+                        desc: 'Añade tus objetivos de fichajes y calcula el filtro exacto que te garantiza encontrarlos en el scout de OSM.',
+                        color: 'border-emerald-500/30 bg-emerald-500/5',
+                        badge: 'emerald',
+                    },
+                    {
+                        icon: '⚡',
+                        title: 'Modo Posiciones',
+                        desc: 'Define las posiciones que necesitas y el sistema explora la BD para generar las mejores combinaciones de filtros.',
+                        color: 'border-indigo-500/30 bg-indigo-500/5',
+                        badge: 'indigo',
+                    },
+                    {
+                        icon: '💡',
+                        title: 'Filtros Mágicos',
+                        desc: 'Guarda los resultados del análisis directamente como filtros de Scout con un solo toque.',
+                        color: 'border-amber-500/30 bg-amber-500/5',
+                        badge: 'amber',
+                    },
+                ].map(f => (
+                    <View key={f.title} className={`border rounded-3xl p-5 mb-4 ${f.color}`}>
+                        <View className="flex-row items-center gap-3 mb-2">
+                            <Text style={{ fontSize: 26 }}>{f.icon}</Text>
+                            <Text className="text-white font-black text-base">{f.title}</Text>
+                        </View>
+                        <Text className="text-slate-400 text-sm leading-relaxed">{f.desc}</Text>
+                    </View>
+                ))}
+
+                {/* CTA */}
+                <TouchableOpacity
+                    onPress={() => showPaywall('SMART Analysis es una función exclusiva PRO.\nDesbloquea el análisis inteligente de jugadores y posiciones.')}
+                    activeOpacity={0.85}
+                    className="mt-2"
+                >
+                    <View className="bg-emerald-500 rounded-3xl h-14 items-center justify-center shadow-xl shadow-emerald-500/30">
+                        <Text className="text-black font-black tracking-widest uppercase text-sm">⚡ Desbloquear SMART PRO</Text>
+                    </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    onPress={() => showPaywall()}
+                    className="mt-3 items-center"
+                >
+                    <Text className="text-slate-500 text-xs">Ver planes y precios →</Text>
+                </TouchableOpacity>
+            </ScrollView>
+        );
+    }
 
     return (
         <ScrollView className="px-6 py-4 flex-1 w-full bg-[#020617]" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
