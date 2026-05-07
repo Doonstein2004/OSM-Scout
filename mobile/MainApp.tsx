@@ -173,9 +173,10 @@ setSelectModal
         <SafeAreaProvider>
             <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#020617' }}>
                 <HeroUINativeProvider>
-                    <View className="max-w-[600px] self-center w-full flex-1">
-                        <SafeAreaView style={{ flex: 1 }}>
-                            <StatusBar barStyle="light-content" backgroundColor="#020617" />
+                    <View style={{ flex: 1, alignItems: 'center', width: '100%' }}>
+                        <View style={{ flex: 1, width: '100%', maxWidth: 600 }}>
+                            <SafeAreaView style={{ flex: 1 }}>
+                                <StatusBar barStyle="light-content" backgroundColor="#020617" />
 
 
                     <View className="px-6 pt-6 pb-4 border-b border-white/10 flex-row justify-between items-center bg-slate-950">
@@ -247,6 +248,7 @@ setSelectModal
                     </Tabs>
 
                     </SafeAreaView>
+                        </View>
                     </View>
 
                     {/* Generic Select Modal */}
