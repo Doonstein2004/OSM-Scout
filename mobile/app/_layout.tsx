@@ -10,6 +10,8 @@ import { GlobalSelector } from '../components/GlobalSelector';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useInitializeData } from '../hooks/useInitializeData';
 import { useServiceWorker } from '../hooks/useServiceWorker';
+import { SubscriptionProvider } from '../context/SubscriptionContext';
+import PaywallModal from '../components/PaywallModal';
 import { View } from 'react-native';
 import '../global.css';
 
@@ -62,14 +64,17 @@ export default function RootLayout() {
       }}>
         <ErrorBoundary>
           <StoreProvider>
-            <AppInitializer>
-              <HeroUINativeProvider>
-                <GlobalSelector />
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="(tabs)" />
-                </Stack>
-              </HeroUINativeProvider>
-            </AppInitializer>
+            <SubscriptionProvider>
+              <AppInitializer>
+                <HeroUINativeProvider>
+                  <GlobalSelector />
+                  <PaywallModal />
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="(tabs)" />
+                  </Stack>
+                </HeroUINativeProvider>
+              </AppInitializer>
+            </SubscriptionProvider>
           </StoreProvider>
         </ErrorBoundary>
       </View>

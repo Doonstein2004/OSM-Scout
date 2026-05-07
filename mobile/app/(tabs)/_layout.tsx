@@ -5,10 +5,12 @@ import { useTranslation } from 'react-i18next';
 import i18n from '../../lib/i18n';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore } from '../../context/StoreContext';
+import { useSubscription } from '../../context/SubscriptionContext';
 
 export default function TabLayout() {
   const { t } = useTranslation();
   const { targetPlayers } = useStore();
+  const { isPro } = useSubscription();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#020617' }} edges={['top']}>
@@ -73,6 +75,11 @@ export default function TabLayout() {
                     <Text className="text-black text-[8px] font-black">{targetPlayers.length}</Text>
                   </View>
                 )}
+                {!isPro && (
+                  <View className="absolute -top-1 -left-2 bg-amber-500 rounded-full w-4 h-4 items-center justify-center">
+                    <Text className="text-black text-[8px] font-black">★</Text>
+                  </View>
+                )}
               </View>
             ),
           }}
@@ -95,7 +102,16 @@ export default function TabLayout() {
           name="fantasy"
           options={{
             title: 'FANTASY',
-            tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>⚽</Text>,
+            tabBarIcon: ({ color }) => (
+              <View>
+                <Text style={{ color, fontSize: 20 }}>⚽</Text>
+                {!isPro && (
+                  <View className="absolute -top-1 -left-2 bg-amber-500 rounded-full w-4 h-4 items-center justify-center">
+                    <Text className="text-black text-[8px] font-black">★</Text>
+                  </View>
+                )}
+              </View>
+            ),
           }}
         />
       </Tabs>

@@ -10,6 +10,7 @@ import { useStore } from '../context/StoreContext';
 import { ScoutSkeleton } from '../components/ScoutSkeleton';
 import { getCachedLastSearch, setCachedLastSearch } from '../lib/cache';
 import { useNetworkStatus } from '../lib/useNetworkStatus';
+import { useSubscription } from '../context/SubscriptionContext';
 import { memo } from 'react';
 
 const PlayerCard = memo(({ player, isTarget, onToggleTarget, formatPrice, getEstMultiplier, t }: any) => {
@@ -101,8 +102,10 @@ export default function ScoutScreen() {
         filterClub, setFilterClub,
         targetPlayers, setTargetPlayers,
         savedFilters, setSavedFilters,
-nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
+        nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
     } = useStore();
+
+    const { canSearch, incrementSearchCount, showPaywall, isPro, dailySearchesUsed, limits } = useSubscription();
 
     const PAGE_SIZE = 50;
 
@@ -134,6 +137,14 @@ nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
     async function fetchPlayers(targetPage = page, isReset = false) {
         if (!isOnline) { Alert.alert('Sin conexión', 'Está viendo resultados en caché.'); return; }
         if ((loading || !hasMore) && !isReset) return;
+
+        // ── Freemium gate ────────────────────────────────────────────────
+        if (!canSearch) {
+            showPaywall(
+                `Alcanzaste tu límite de ${limits.dailySearches} búsquedas gratuitas de hoy.\nActualiza a PRO para búsquedas ilimitadas.`
+            );
+            return;
+        }
 
         setLoading(true);
         try {
@@ -204,6 +215,9 @@ nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
                 setPlayers(merged);
                 setHasMore(mappedData.length === PAGE_SIZE);
                 setPage(targetPage + 1);
+
+                // Increment free search counter
+                if (isReset) await incrementSearchCount();
 
                 // Cache first page of results for offline access
                 if (isReset || targetPage === 0) {
@@ -446,11 +460,18 @@ nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
                     )}
                     <Button 
                         onPress={() => fetchPlayers(0, true)} 
-                        className={`flex-1 h-12 rounded-2xl shadow-xl ${isOnline ? 'bg-emerald-500 shadow-emerald-500/20' : 'bg-slate-800 shadow-none opacity-50'}`}
+                        className={`flex-1 h-12 rounded-2xl shadow-xl ${isOnline && canSearch ? 'bg-emerald-500 shadow-emerald-500/20' : !canSearch ? 'bg-amber-500/80 shadow-amber-500/20' : 'bg-slate-800 shadow-none opacity-50'}`}
                         isDisabled={!isOnline}
                     >
                         <Button.Label className={`${isOnline ? 'text-black' : 'text-slate-500'} font-black tracking-widest text-xs`}>
-                            {isOnline ? t('search_players') + ' 🔍' : t('offline_mode').toUpperCase()}
+                            {!isOnline
+                                ? t('offline_mode').toUpperCase()
+                                : !canSearch
+                                    ? `🔒 LÍMITE DIARIO (${dailySearchesUsed}/${limits.dailySearches})`
+                                    : !isPro
+                                        ? `${t('search_players')} 🔍 (${dailySearchesUsed}/${limits.dailySearches})`
+                                        : t('search_players') + ' 🔍'
+                            }
                         </Button.Label>
                     </Button>
                 </View>
