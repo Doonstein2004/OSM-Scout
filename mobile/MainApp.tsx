@@ -176,7 +176,7 @@ setSelectModal
                     <View style={{ flex: 1, alignItems: 'center', width: '100%' }}>
                         <View style={{ flex: 1, width: '100%', maxWidth: 600 }}>
                             <SafeAreaView style={{ flex: 1 }}>
-                                <StatusBar barStyle="light-content" backgroundColor="#020617" />
+                        <StatusBar barStyle="light-content" backgroundColor="#020617" />
 
 
                     <View className="px-6 pt-6 pb-4 border-b border-white/10 flex-row justify-between items-center bg-slate-950">

@@ -10,6 +10,7 @@ import { GlobalSelector } from '../components/GlobalSelector';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useInitializeData } from '../hooks/useInitializeData';
 import { useServiceWorker } from '../hooks/useServiceWorker';
+import { View } from 'react-native';
 import '../global.css';
 
 inject({ mode: 'production' });
@@ -42,19 +43,36 @@ export default function RootLayout() {
   useServiceWorker();
   
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <ErrorBoundary>
-        <StoreProvider>
-          <AppInitializer>
-            <HeroUINativeProvider>
-              <GlobalSelector />
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(tabs)" />
-              </Stack>
-            </HeroUINativeProvider>
-          </AppInitializer>
-        </StoreProvider>
-      </ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000000' }}>
+      <View style={{ 
+        flex: 1, 
+        width: '100%', 
+        maxWidth: 500, 
+        alignSelf: 'center', 
+        backgroundColor: '#020617',
+        borderLeftWidth: 1,
+        borderRightWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        // @ts-ignore - Shadow properties for web/native
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.5,
+        shadowRadius: 20,
+        elevation: 10,
+      }}>
+        <ErrorBoundary>
+          <StoreProvider>
+            <AppInitializer>
+              <HeroUINativeProvider>
+                <GlobalSelector />
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(tabs)" />
+                </Stack>
+              </HeroUINativeProvider>
+            </AppInitializer>
+          </StoreProvider>
+        </ErrorBoundary>
+      </View>
     </GestureHandlerRootView>
   );
 }
