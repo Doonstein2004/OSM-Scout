@@ -2,15 +2,20 @@
  * lib/purchases.ts
  * RevenueCat integration layer for OSM Scout
  *
- * Usage:
- *  1. Fill REVENUECAT_ANDROID_KEY from your .env
- *  2. Call initializePurchases() once at app startup (in _layout.tsx)
+ * Setup:
+ *  1. Set EXPO_PUBLIC_REVENUECAT_ANDROID_KEY in your .env file
+ *  2. initializePurchases() is called in _layout.tsx on app startup
  *  3. Use purchaseMonthly() / purchaseLifetime() / restorePurchases() from PaywallModal
+ *
+ * Notes:
+ *  - Web: purchases are not supported (SDK limitation). Paywall is display-only on web.
+ *  - Expo Go: runs in Preview API Mode automatically (mocked, no real purchases).
+ *  - EAS Build (dev/preview/production): fully functional with real Google Play billing.
  */
 
 import { Platform } from 'react-native';
 
-// ─── Types (matching react-native-purchases when installed) ──────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface PurchaseResult {
     success: boolean;
@@ -18,7 +23,7 @@ export interface PurchaseResult {
     error?: string;
 }
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ─── Config ──────────────────────────────────────────────────────────────────
 
 const REVENUECAT_ANDROID_KEY = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY ?? '';
 
@@ -29,21 +34,29 @@ export const PRODUCT_IDS = {
     lifetime: 'osm_pro_lifetime',
 } as const;
 
-// ─── Stub flag ───────────────────────────────────────────────────────────────
-// Set to false once react-native-purchases is installed and keys are configured
+// ─── Helper: is native platform with RC support ───────────────────────────────
 
-const RC_READY = false;
+const isNative = Platform.OS === 'android' || Platform.OS === 'ios';
 
 // ─── Initialize ──────────────────────────────────────────────────────────────
 
 export async function initializePurchases(userId?: string): Promise<void> {
-    if (!RC_READY || Platform.OS === 'web') return;
+    if (!isNative) return; // web: skip
 
     try {
-        // TODO: uncomment after `npx expo install react-native-purchases`
-        // const Purchases = (await import('react-native-purchases')).default;
-        // await Purchases.configure({ apiKey: REVENUECAT_ANDROID_KEY });
-        // if (userId) await Purchases.logIn(userId);
+        const Purchases = (await import('react-native-purchases')).default;
+        const { LOG_LEVEL } = await import('react-native-purchases');
+
+        if (__DEV__) {
+            Purchases.setLogLevel(LOG_LEVEL.VERBOSE);
+        }
+
+        Purchases.configure({ apiKey: REVENUECAT_ANDROID_KEY });
+
+        if (userId) {
+            await Purchases.logIn(userId);
+        }
+
         console.log('[Purchases] RevenueCat initialized');
     } catch (e) {
         console.error('[Purchases] init error:', e);
@@ -53,16 +66,16 @@ export async function initializePurchases(userId?: string): Promise<void> {
 // ─── Check entitlement ───────────────────────────────────────────────────────
 
 export async function checkProEntitlement(): Promise<'free' | 'pro' | 'lifetime'> {
-    if (!RC_READY || Platform.OS === 'web') return 'free';
+    if (!isNative) return 'free'; // web: always free (no web billing configured)
 
     try {
-        // TODO: uncomment after installing react-native-purchases
-        // const Purchases = (await import('react-native-purchases')).default;
-        // const info = await Purchases.getCustomerInfo();
-        // const entitlement = info.entitlements.active[ENTITLEMENT_ID];
-        // if (!entitlement) return 'free';
-        // return entitlement.productIdentifier === PRODUCT_IDS.lifetime ? 'lifetime' : 'pro';
-        return 'free';
+        const Purchases = (await import('react-native-purchases')).default;
+        const info = await Purchases.getCustomerInfo();
+        const entitlement = info.entitlements.active[ENTITLEMENT_ID];
+
+        if (!entitlement) return 'free';
+
+        return entitlement.productIdentifier === PRODUCT_IDS.lifetime ? 'lifetime' : 'pro';
     } catch (e) {
         console.error('[Purchases] checkEntitlement error:', e);
         return 'free';
@@ -72,24 +85,23 @@ export async function checkProEntitlement(): Promise<'free' | 'pro' | 'lifetime'
 // ─── Purchase monthly ────────────────────────────────────────────────────────
 
 export async function purchaseMonthly(): Promise<PurchaseResult> {
-    if (!RC_READY) {
-        console.warn('[Purchases] RC_READY=false — stub mode');
-        return { success: false, error: 'RevenueCat not configured yet' };
-    }
-    if (Platform.OS === 'web') {
+    if (!isNative) {
         return { success: false, error: 'In-app purchases not available on web' };
     }
 
     try {
-        // TODO: uncomment after installing react-native-purchases
-        // const Purchases = (await import('react-native-purchases')).default;
-        // const offerings = await Purchases.getOfferings();
-        // const monthly = offerings.current?.monthly;
-        // if (!monthly) throw new Error('Monthly package not found');
-        // const { customerInfo } = await Purchases.purchasePackage(monthly);
-        // const active = customerInfo.entitlements.active[ENTITLEMENT_ID];
-        // return active ? { success: true, plan: 'pro' } : { success: false, error: 'Purchase not verified' };
-        return { success: false, error: 'RevenueCat not configured yet' };
+        const Purchases = (await import('react-native-purchases')).default;
+        const offerings = await Purchases.getOfferings();
+        const monthly = offerings.current?.monthly;
+
+        if (!monthly) throw new Error('Monthly package not found in current offering');
+
+        const { customerInfo } = await Purchases.purchasePackage(monthly);
+        const active = customerInfo.entitlements.active[ENTITLEMENT_ID];
+
+        return active
+            ? { success: true, plan: 'pro' }
+            : { success: false, error: 'Purchase not verified' };
     } catch (e: any) {
         if (e?.userCancelled) return { success: false, error: 'cancelled' };
         return { success: false, error: e?.message ?? 'Unknown error' };
@@ -99,24 +111,29 @@ export async function purchaseMonthly(): Promise<PurchaseResult> {
 // ─── Purchase lifetime ───────────────────────────────────────────────────────
 
 export async function purchaseLifetime(): Promise<PurchaseResult> {
-    if (!RC_READY) {
-        console.warn('[Purchases] RC_READY=false — stub mode');
-        return { success: false, error: 'RevenueCat not configured yet' };
-    }
-    if (Platform.OS === 'web') {
+    if (!isNative) {
         return { success: false, error: 'In-app purchases not available on web' };
     }
 
     try {
-        // TODO: uncomment after installing react-native-purchases
-        // const Purchases = (await import('react-native-purchases')).default;
-        // const offerings = await Purchases.getOfferings();
-        // const lifetime = offerings.current?.lifetime;
-        // if (!lifetime) throw new Error('Lifetime package not found');
-        // const { customerInfo } = await Purchases.purchasePackage(lifetime);
-        // const active = customerInfo.entitlements.active[ENTITLEMENT_ID];
-        // return active ? { success: true, plan: 'lifetime' } : { success: false, error: 'Purchase not verified' };
-        return { success: false, error: 'RevenueCat not configured yet' };
+        const Purchases = (await import('react-native-purchases')).default;
+        const offerings = await Purchases.getOfferings();
+
+        // Lifetime is typically a non-renewing purchase or annual — find it in the offering
+        const lifetime =
+            offerings.current?.lifetime ??
+            offerings.current?.availablePackages.find(
+                p => p.product.identifier === PRODUCT_IDS.lifetime
+            );
+
+        if (!lifetime) throw new Error('Lifetime package not found in current offering');
+
+        const { customerInfo } = await Purchases.purchasePackage(lifetime);
+        const active = customerInfo.entitlements.active[ENTITLEMENT_ID];
+
+        return active
+            ? { success: true, plan: 'lifetime' }
+            : { success: false, error: 'Purchase not verified' };
     } catch (e: any) {
         if (e?.userCancelled) return { success: false, error: 'cancelled' };
         return { success: false, error: e?.message ?? 'Unknown error' };
@@ -126,20 +143,21 @@ export async function purchaseLifetime(): Promise<PurchaseResult> {
 // ─── Restore purchases ───────────────────────────────────────────────────────
 
 export async function restorePurchases(): Promise<PurchaseResult> {
-    if (!RC_READY || Platform.OS === 'web') {
-        return { success: false, error: 'RevenueCat not configured yet' };
+    if (!isNative) {
+        return { success: false, error: 'Restore not supported on web' };
     }
 
     try {
-        // TODO: uncomment after installing react-native-purchases
-        // const Purchases = (await import('react-native-purchases')).default;
-        // const info = await Purchases.restorePurchases();
-        // const active = info.entitlements.active[ENTITLEMENT_ID];
-        // if (active) {
-        //     const plan = active.productIdentifier === PRODUCT_IDS.lifetime ? 'lifetime' : 'pro';
-        //     return { success: true, plan };
-        // }
-        return { success: false, error: 'No active purchases found' };
+        const Purchases = (await import('react-native-purchases')).default;
+        const info = await Purchases.restorePurchases();
+        const active = info.entitlements.active[ENTITLEMENT_ID];
+
+        if (active) {
+            const plan = active.productIdentifier === PRODUCT_IDS.lifetime ? 'lifetime' : 'pro';
+            return { success: true, plan };
+        }
+
+        return { success: false };
     } catch (e: any) {
         return { success: false, error: e?.message ?? 'Unknown error' };
     }
