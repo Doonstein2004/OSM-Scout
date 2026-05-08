@@ -6,12 +6,14 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '../context/StoreContext';
 import { supabase } from '../lib/supabase';
 import { toNatStem, getFlag } from '../lib/flags';
+import { useSubscription } from '../context/SubscriptionContext';
 
 
 
 export default function FantasyScreen() {
     const { t } = useTranslation();
     const { nationalities, openSelector, formatPrice } = useStore();
+    const { isPro, showPaywall } = useSubscription();
 
     const [fantasyBudget, setFantasyBudget] = useState(150000000);
     const [fantasySize, setFantasySize] = useState(15);
@@ -126,6 +128,84 @@ export default function FantasyScreen() {
             setFantasyLoading(false);
         }
     };
+
+    // ── PRO gate ────────────────────────────────────────────────────
+    if (!isPro) {
+        return (
+            <ScrollView
+                className="flex-1 w-full bg-[#020617]"
+                contentContainerStyle={{ padding: 24, paddingBottom: 80 }}
+                showsVerticalScrollIndicator={false}
+            >
+                {/* Hero */}
+                <View className="items-center pt-6 pb-8">
+                    <View className="w-24 h-24 rounded-[32px] bg-fuchsia-500/10 border border-fuchsia-500/20 items-center justify-center mb-5">
+                        <Text style={{ fontSize: 44 }}>⚽</Text>
+                    </View>
+                    <Text className="text-white font-black text-2xl tracking-tighter mb-2 text-center uppercase">
+                        Fantasy <Text className="text-fuchsia-400">Optimizer</Text>
+                    </Text>
+                    <Text className="text-slate-400 text-sm text-center leading-relaxed px-4">
+                        Genera plantillas de Fantasy completas y optimizadas en segundos, respetando tu presupuesto y formación.
+                    </Text>
+                </View>
+
+                {/* Feature preview cards */}
+                {[
+                    {
+                        icon: '💰',
+                        title: 'Control de Presupuesto',
+                        desc: 'Define tu presupuesto en OSM$ y el optimizador construye la mejor plantilla posible dentro de ese límite.',
+                        color: 'border-emerald-500/30 bg-emerald-500/5',
+                    },
+                    {
+                        icon: '🏆',
+                        title: 'Distribución de Posiciones',
+                        desc: 'Personaliza el número de jugadores por posición (GK, CB, ST...) adaptado a tu formación favorita.',
+                        color: 'border-fuchsia-500/30 bg-fuchsia-500/5',
+                    },
+                    {
+                        icon: '🌟',
+                        title: 'Estrategias de Edad',
+                        desc: 'Elige entre plantillas jóvenes, veteranas o mixtas según tu estrategia de temporada en el fantasy.',
+                        color: 'border-amber-500/30 bg-amber-500/5',
+                    },
+                    {
+                        icon: '🇳🇭',
+                        title: 'Filtro por Nacionalidad',
+                        desc: 'Construye una plantilla monocolor o elige jugadores de tu nación para ligas de compatriotas.',
+                        color: 'border-indigo-500/30 bg-indigo-500/5',
+                    },
+                ].map(f => (
+                    <View key={f.title} className={`border rounded-3xl p-5 mb-4 ${f.color}`}>
+                        <View className="flex-row items-center gap-3 mb-2">
+                            <Text style={{ fontSize: 26 }}>{f.icon}</Text>
+                            <Text className="text-white font-black text-base">{f.title}</Text>
+                        </View>
+                        <Text className="text-slate-400 text-sm leading-relaxed">{f.desc}</Text>
+                    </View>
+                ))}
+
+                {/* CTA */}
+                <TouchableOpacity
+                    onPress={() => showPaywall('Fantasy Optimizer es una herramienta exclusiva PRO.\nConstruye tu plantilla perfecta de Fantasy sin límites.')}
+                    activeOpacity={0.85}
+                    className="mt-2"
+                >
+                    <View className="bg-fuchsia-500 rounded-3xl h-14 items-center justify-center shadow-xl shadow-fuchsia-500/30">
+                        <Text className="text-white font-black tracking-widest uppercase text-sm">⚽ Desbloquear Fantasy PRO</Text>
+                    </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    onPress={() => showPaywall()}
+                    className="mt-3 items-center"
+                >
+                    <Text className="text-slate-500 text-xs">Ver planes y precios →</Text>
+                </TouchableOpacity>
+            </ScrollView>
+        );
+    }
 
     return (
         <ScrollView className="px-6 py-4 flex-1 w-full bg-[#020617]" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
