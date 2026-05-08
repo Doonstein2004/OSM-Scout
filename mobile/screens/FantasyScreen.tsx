@@ -146,7 +146,7 @@ export default function FantasyScreen() {
                         Fantasy <Text className="text-fuchsia-400">Optimizer</Text>
                     </Text>
                     <Text className="text-slate-400 text-sm text-center leading-relaxed px-4">
-                        Genera plantillas de Fantasy completas y optimizadas en segundos, respetando tu presupuesto y formación.
+                        {t('fantasy_upsell_desc')}
                     </Text>
                 </View>
 
@@ -154,46 +154,46 @@ export default function FantasyScreen() {
                 {[
                     {
                         icon: '💰',
-                        title: 'Control de Presupuesto',
-                        desc: 'Define tu presupuesto en OSM$ y el optimizador construye la mejor plantilla posible dentro de ese límite.',
+                        titleKey: 'fantasy_upsell_budget_title',
+                        descKey: 'fantasy_upsell_budget_desc',
                         color: 'border-emerald-500/30 bg-emerald-500/5',
                     },
                     {
                         icon: '🏆',
-                        title: 'Distribución de Posiciones',
-                        desc: 'Personaliza el número de jugadores por posición (GK, CB, ST...) adaptado a tu formación favorita.',
+                        titleKey: 'fantasy_upsell_pos_title',
+                        descKey: 'fantasy_upsell_pos_desc',
                         color: 'border-fuchsia-500/30 bg-fuchsia-500/5',
                     },
                     {
                         icon: '🌟',
-                        title: 'Estrategias de Edad',
-                        desc: 'Elige entre plantillas jóvenes, veteranas o mixtas según tu estrategia de temporada en el fantasy.',
+                        titleKey: 'fantasy_upsell_age_title',
+                        descKey: 'fantasy_upsell_age_desc',
                         color: 'border-amber-500/30 bg-amber-500/5',
                     },
                     {
                         icon: '🇳🇭',
-                        title: 'Filtro por Nacionalidad',
-                        desc: 'Construye una plantilla monocolor o elige jugadores de tu nación para ligas de compatriotas.',
+                        titleKey: 'fantasy_upsell_nat_title',
+                        descKey: 'fantasy_upsell_nat_desc',
                         color: 'border-indigo-500/30 bg-indigo-500/5',
                     },
                 ].map(f => (
-                    <View key={f.title} className={`border rounded-3xl p-5 mb-4 ${f.color}`}>
+                    <View key={f.titleKey} className={`border rounded-3xl p-5 mb-4 ${f.color}`}>
                         <View className="flex-row items-center gap-3 mb-2">
                             <Text style={{ fontSize: 26 }}>{f.icon}</Text>
-                            <Text className="text-white font-black text-base">{f.title}</Text>
+                            <Text className="text-white font-black text-base">{t(f.titleKey)}</Text>
                         </View>
-                        <Text className="text-slate-400 text-sm leading-relaxed">{f.desc}</Text>
+                        <Text className="text-slate-400 text-sm leading-relaxed">{t(f.descKey)}</Text>
                     </View>
                 ))}
 
                 {/* CTA */}
                 <TouchableOpacity
-                    onPress={() => showPaywall('Fantasy Optimizer es una herramienta exclusiva PRO.\nConstruye tu plantilla perfecta de Fantasy sin límites.')}
+                    onPress={() => showPaywall(t('fantasy_upsell_title') + '\n' + t('fantasy_upsell_desc'))}
                     activeOpacity={0.85}
                     className="mt-2"
                 >
                     <View className="bg-fuchsia-500 rounded-3xl h-14 items-center justify-center shadow-xl shadow-fuchsia-500/30">
-                        <Text className="text-white font-black tracking-widest uppercase text-sm">⚽ Desbloquear Fantasy PRO</Text>
+                        <Text className="text-white font-black tracking-widest uppercase text-sm">{t('fantasy_unlock_cta')}</Text>
                     </View>
                 </TouchableOpacity>
 
@@ -201,7 +201,7 @@ export default function FantasyScreen() {
                     onPress={() => showPaywall()}
                     className="mt-3 items-center"
                 >
-                    <Text className="text-slate-500 text-xs">Ver planes y precios →</Text>
+                    <Text className="text-slate-500 text-xs">{t('view_plans')}</Text>
                 </TouchableOpacity>
             </ScrollView>
         );

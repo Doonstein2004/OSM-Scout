@@ -181,7 +181,7 @@ export default function SmartScreen() {
                         SMART <Text className="text-emerald-400">Analysis</Text>
                     </Text>
                     <Text className="text-slate-400 text-sm text-center leading-relaxed px-4">
-                        Descubre combinaciones óptimas de jugadores y mina la base de datos para encontrar exactamente lo que necesitas.
+                        {t('smart_upsell_desc')}
                     </Text>
                 </View>
 
@@ -189,43 +189,40 @@ export default function SmartScreen() {
                 {[
                     {
                         icon: '🎯',
-                        title: 'Modo Jugadores',
-                        desc: 'Añade tus objetivos de fichajes y calcula el filtro exacto que te garantiza encontrarlos en el scout de OSM.',
+                        titleKey: 'smart_upsell_mode_player_title',
+                        descKey: 'smart_upsell_mode_player_desc',
                         color: 'border-emerald-500/30 bg-emerald-500/5',
-                        badge: 'emerald',
                     },
                     {
                         icon: '⚡',
-                        title: 'Modo Posiciones',
-                        desc: 'Define las posiciones que necesitas y el sistema explora la BD para generar las mejores combinaciones de filtros.',
+                        titleKey: 'smart_upsell_mode_pos_title',
+                        descKey: 'smart_upsell_mode_pos_desc',
                         color: 'border-indigo-500/30 bg-indigo-500/5',
-                        badge: 'indigo',
                     },
                     {
                         icon: '💡',
-                        title: 'Filtros Mágicos',
-                        desc: 'Guarda los resultados del análisis directamente como filtros de Scout con un solo toque.',
+                        titleKey: 'smart_upsell_magic_title',
+                        descKey: 'smart_upsell_magic_desc',
                         color: 'border-amber-500/30 bg-amber-500/5',
-                        badge: 'amber',
                     },
                 ].map(f => (
-                    <View key={f.title} className={`border rounded-3xl p-5 mb-4 ${f.color}`}>
+                    <View key={f.titleKey} className={`border rounded-3xl p-5 mb-4 ${f.color}`}>
                         <View className="flex-row items-center gap-3 mb-2">
                             <Text style={{ fontSize: 26 }}>{f.icon}</Text>
-                            <Text className="text-white font-black text-base">{f.title}</Text>
+                            <Text className="text-white font-black text-base">{t(f.titleKey)}</Text>
                         </View>
-                        <Text className="text-slate-400 text-sm leading-relaxed">{f.desc}</Text>
+                        <Text className="text-slate-400 text-sm leading-relaxed">{t(f.descKey)}</Text>
                     </View>
                 ))}
 
                 {/* CTA */}
                 <TouchableOpacity
-                    onPress={() => showPaywall('SMART Analysis es una función exclusiva PRO.\nDesbloquea el análisis inteligente de jugadores y posiciones.')}
+                    onPress={() => showPaywall(t('smart_upsell_title') + '\n' + t('smart_upsell_desc'))}
                     activeOpacity={0.85}
                     className="mt-2"
                 >
                     <View className="bg-emerald-500 rounded-3xl h-14 items-center justify-center shadow-xl shadow-emerald-500/30">
-                        <Text className="text-black font-black tracking-widest uppercase text-sm">⚡ Desbloquear SMART PRO</Text>
+                        <Text className="text-black font-black tracking-widest uppercase text-sm">{t('smart_unlock_cta')}</Text>
                     </View>
                 </TouchableOpacity>
 

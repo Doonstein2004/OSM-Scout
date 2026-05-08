@@ -1,27 +1,29 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, Platform } from 'react-native';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
+import { useTranslation } from 'react-i18next';
 import { useSubscription } from '../context/SubscriptionContext';
 import { purchaseMonthly, purchaseLifetime, restorePurchases } from '../lib/purchases';
 
 interface Feature {
     icon: string;
-    label: string;
+    labelKey: string;
     free: boolean;
 }
 
-const FEATURES: Feature[] = [
-    { icon: '🔍', label: 'Búsquedas de jugadores',    free: true  },
-    { icon: '📋', label: '2 filtros guardados',        free: true  },
-    { icon: '🌍', label: 'Ligas',                      free: true  },
-    { icon: '⚡', label: 'SMART Analysis',             free: false },
-    { icon: '♾️', label: 'Búsquedas ilimitadas',       free: false },
-    { icon: '💾', label: 'Filtros ilimitados',         free: false },
-    { icon: '🏆', label: 'Fantasy Optimizer',          free: false },
-    { icon: '🚫', label: 'Sin anuncios',               free: false },
+const FEATURE_KEYS: Feature[] = [
+    { icon: '🔍', labelKey: 'feat_searches',          free: true  },
+    { icon: '📋', labelKey: 'feat_filters_free',       free: true  },
+    { icon: '🌍', labelKey: 'feat_leagues',            free: true  },
+    { icon: '⚡', labelKey: 'feat_smart',             free: false },
+    { icon: '♾️', labelKey: 'feat_searches_unlimited', free: false },
+    { icon: '💾', labelKey: 'feat_filters_unlimited',  free: false },
+    { icon: '🏆', labelKey: 'feat_fantasy',            free: false },
+    { icon: '🚫', labelKey: 'feat_no_ads',             free: false },
 ];
 
 export default function PaywallModal() {
+    const { t } = useTranslation();
     const { paywallVisible, paywallReason, hidePaywall, setPlan } = useSubscription();
     const [loading, setLoading] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'lifetime'>('lifetime');
@@ -41,7 +43,7 @@ export default function PaywallModal() {
                 setPlan(result.plan);
                 hidePaywall();
             } else if (result.error !== 'cancelled') {
-                Alert.alert('Error de compra', result.error ?? 'Intenta de nuevo.');
+                Alert.alert(t('error_purchase_title'), result.error ?? t('error_generic'));
             }
         } finally {
             setLoading(false);
@@ -55,9 +57,9 @@ export default function PaywallModal() {
             if (result.success && result.plan) {
                 setPlan(result.plan);
                 hidePaywall();
-                Alert.alert('✅ Compras restauradas', 'Tu plan PRO ha sido activado.');
+                Alert.alert(t('paywall_restore_success_title'), t('paywall_restore_success_desc'));
             } else {
-                Alert.alert('Sin compras previas', 'No encontramos compras activas asociadas a esta cuenta.');
+                Alert.alert(t('paywall_restore_empty_title'), t('paywall_restore_empty_desc'));
             }
         } finally {
             setLoading(false);
@@ -65,7 +67,7 @@ export default function PaywallModal() {
     };
 
     const handleDonate = () => {
-        Alert.alert('Donaciones', 'Próximamente disponible. ¡Gracias por tu apoyo! 💜');
+        Alert.alert(t('donate_title'), t('donate_soon_message'));
     };
 
     return (
@@ -132,18 +134,18 @@ export default function PaywallModal() {
                                 <Text style={{ fontSize: 30 }}>⚡</Text>
                             </View>
                             <Text className="text-white font-black text-2xl tracking-tighter mb-1 text-center">
-                                OSM SCOUT <Text className="text-emerald-400">PRO</Text>
+                                {t('paywall_title')}
                             </Text>
                             <Text className="text-slate-400 text-sm text-center leading-relaxed px-6">
-                                {paywallReason || 'Desbloquea todas las herramientas para dominar el mercado de OSM.'}
+                                {paywallReason || t('paywall_subtitle')}
                             </Text>
                         </View>
 
                         {/* ── Feature grid (2 columns) ───────────────────── */}
                         <View className="mx-5 mb-5" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                            {FEATURES.map(f => (
+                            {FEATURE_KEYS.map(f => (
                                 <View
-                                    key={f.label}
+                                    key={f.labelKey}
                                     style={{
                                         flexDirection: 'row',
                                         alignItems: 'center',
@@ -167,7 +169,7 @@ export default function PaywallModal() {
                                             color: f.free ? '#94a3b8' : '#6ee7b7',
                                         }}
                                     >
-                                        {f.label}
+                                        {t(f.labelKey)}
                                     </Text>
                                     {!f.free && (
                                         <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: 'rgba(16,185,129,0.3)', alignItems: 'center', justifyContent: 'center' }}>
@@ -181,7 +183,7 @@ export default function PaywallModal() {
                         {/* ── Plan selector (side by side) ──────────────── */}
                         <View className="mx-5 mb-4">
                             <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3 text-center">
-                                Elige tu plan
+                                {t('paywall_choose_plan')}
                             </Text>
                             <View className="flex-row gap-3">
 
@@ -196,14 +198,14 @@ export default function PaywallModal() {
                                             ? 'border-emerald-500 bg-emerald-500/10'
                                             : 'border-white/10 bg-white/5'
                                     }`}>
-                                        <Text className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">Mensual</Text>
+                                        <Text className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">{t('plan_monthly_label')}</Text>
                                         <Text className={`font-black text-3xl ${selectedPlan === 'monthly' ? 'text-white' : 'text-slate-400'}`}>
-                                            $2.99
+                                            {t('plan_monthly_price')}
                                         </Text>
-                                        <Text className="text-slate-500 text-[10px] mt-0.5">por mes</Text>
+                                        <Text className="text-slate-500 text-[10px] mt-0.5">{t('plan_monthly_period')}</Text>
                                         {selectedPlan === 'monthly' && (
                                             <View className="mt-3 bg-emerald-500/20 border border-emerald-500/40 px-3 py-1 rounded-full">
-                                                <Text className="text-emerald-400 text-[10px] font-black">SELECCIONADO</Text>
+                                                <Text className="text-emerald-400 text-[10px] font-black">{t('plan_selected')}</Text>
                                             </View>
                                         )}
                                     </View>
@@ -221,16 +223,16 @@ export default function PaywallModal() {
                                             : 'border-white/10 bg-white/5'
                                     }`}>
                                         <View className="bg-amber-500 px-2 py-0.5 rounded-full mb-1.5 self-center">
-                                            <Text className="text-black font-black text-[9px] uppercase tracking-widest">🔥 Mejor valor</Text>
+                                            <Text className="text-black font-black text-[9px] uppercase tracking-widest">{t('plan_best_value')}</Text>
                                         </View>
-                                        <Text className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">Vitalicio</Text>
+                                        <Text className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">{t('plan_lifetime_label')}</Text>
                                         <Text className={`font-black text-3xl ${selectedPlan === 'lifetime' ? 'text-white' : 'text-slate-400'}`}>
-                                            $14.99
+                                            {t('plan_lifetime_price')}
                                         </Text>
-                                        <Text className="text-slate-500 text-[10px] mt-0.5">pago único</Text>
+                                        <Text className="text-slate-500 text-[10px] mt-0.5">{t('plan_lifetime_period')}</Text>
                                         {selectedPlan === 'lifetime' && (
                                             <View className="mt-3 bg-amber-500/20 border border-amber-500/40 px-3 py-1 rounded-full">
-                                                <Text className="text-amber-400 text-[10px] font-black">SELECCIONADO</Text>
+                                                <Text className="text-amber-400 text-[10px] font-black">{t('plan_selected')}</Text>
                                             </View>
                                         )}
                                     </View>
@@ -251,10 +253,10 @@ export default function PaywallModal() {
                                 }`}>
                                     <Text className="text-black font-black text-sm tracking-widest uppercase">
                                         {loading
-                                            ? 'Procesando...'
+                                            ? t('cta_processing')
                                             : selectedPlan === 'lifetime'
-                                                ? '🔥 Obtener Acceso Vitalicio'
-                                                : '⚡ Suscribirse por $2.99/mes'
+                                                ? t('cta_lifetime')
+                                                : t('cta_monthly')
                                         }
                                     </Text>
                                 </View>
@@ -266,8 +268,8 @@ export default function PaywallModal() {
                             <View className="border border-fuchsia-500/25 bg-fuchsia-500/5 rounded-2xl px-4 py-3 flex-row items-center gap-3">
                                 <Text style={{ fontSize: 20 }}>☕</Text>
                                 <View className="flex-1">
-                                    <Text className="text-fuchsia-300 font-black text-xs">Apoya el proyecto</Text>
-                                    <Text className="text-slate-500 text-[10px]">Donación voluntaria — cualquier monto</Text>
+                                    <Text className="text-fuchsia-300 font-black text-xs">{t('donate_title')}</Text>
+                                    <Text className="text-slate-500 text-[10px]">{t('donate_subtitle')}</Text>
                                 </View>
                                 <Text style={{ fontSize: 18 }}>💜</Text>
                             </View>
@@ -277,14 +279,14 @@ export default function PaywallModal() {
                         <View className="items-center mt-4 px-6 gap-2">
                             <TouchableOpacity onPress={handleRestore} disabled={loading}>
                                 <Text className="text-slate-500 text-[11px] underline">
-                                    {loading ? 'Procesando...' : 'Restaurar compras'}
+                                    {loading ? t('cta_processing') : t('restore_purchases')}
                                 </Text>
                             </TouchableOpacity>
                             <TouchableOpacity onPress={hidePaywall}>
-                                <Text className="text-slate-600 text-[11px]">Continuar gratis (limitado)</Text>
+                                <Text className="text-slate-600 text-[11px]">{t('continue_free')}</Text>
                             </TouchableOpacity>
                             <Text className="text-slate-700 text-[10px] text-center leading-relaxed px-4 mt-1">
-                                Cancela cuando quieras. Gestionado por Google Play.
+                                {t('paywall_legal')}
                             </Text>
                         </View>
 
