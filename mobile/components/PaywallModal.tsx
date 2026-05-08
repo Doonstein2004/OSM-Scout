@@ -11,56 +11,32 @@ interface Feature {
 }
 
 const FEATURES: Feature[] = [
-    { icon: '🔍', label: 'Búsquedas de jugadores',   free: true  },
-    { icon: '📋', label: '2 filtros guardados',       free: true  },
-    { icon: '🌍', label: 'Seguimiento de ligas',      free: true  },
-    { icon: '⚡', label: 'SMART Analysis ilimitado',  free: false },
-    { icon: '♾️', label: 'Búsquedas ilimitadas',      free: false },
-    { icon: '💾', label: 'Filtros guardados infinitos', free: false },
-    { icon: '🏆', label: 'Herramientas Fantasy',      free: false },
-    { icon: '📤', label: 'Exportar listas',           free: false },
-    { icon: '🚫', label: 'Sin anuncios',              free: false },
-];
-
-const PLANS = [
-    {
-        id: 'monthly',
-        label: 'PRO Mensual',
-        price: '$2.99',
-        period: '/mes',
-        badge: null,
-        color: 'border-emerald-500/50 bg-emerald-500/5',
-        labelColor: 'text-emerald-400',
-    },
-    {
-        id: 'lifetime',
-        label: 'Acceso Vitalicio',
-        price: '$14.99',
-        period: 'único',
-        badge: '🔥 MEJOR VALOR',
-        color: 'border-amber-500/60 bg-amber-500/10',
-        labelColor: 'text-amber-400',
-    },
+    { icon: '🔍', label: 'Búsquedas de jugadores',    free: true  },
+    { icon: '📋', label: '2 filtros guardados',        free: true  },
+    { icon: '🌍', label: 'Ligas',                      free: true  },
+    { icon: '⚡', label: 'SMART Analysis',             free: false },
+    { icon: '♾️', label: 'Búsquedas ilimitadas',       free: false },
+    { icon: '💾', label: 'Filtros ilimitados',         free: false },
+    { icon: '🏆', label: 'Fantasy Optimizer',          free: false },
+    { icon: '🚫', label: 'Sin anuncios',               free: false },
 ];
 
 export default function PaywallModal() {
     const { paywallVisible, paywallReason, hidePaywall, setPlan } = useSubscription();
     const [loading, setLoading] = useState(false);
+    const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'lifetime'>('lifetime');
 
-    const handleSubscribe = async (planId: string) => {
-        // ── DEV MODE: unlock immediately without payment ──
+    const handleSubscribe = async () => {
         if (__DEV__) {
-            setPlan(planId === 'lifetime' ? 'lifetime' : 'pro');
+            setPlan(selectedPlan === 'lifetime' ? 'lifetime' : 'pro');
             hidePaywall();
             return;
         }
-
         setLoading(true);
         try {
-            const result = planId === 'lifetime'
+            const result = selectedPlan === 'lifetime'
                 ? await purchaseLifetime()
                 : await purchaseMonthly();
-
             if (result.success && result.plan) {
                 setPlan(result.plan);
                 hidePaywall();
@@ -89,114 +65,174 @@ export default function PaywallModal() {
     };
 
     const handleDonate = () => {
-        // TODO: Open Buy Me a Coffee / Stripe link
         Alert.alert('Donaciones', 'Próximamente disponible. ¡Gracias por tu apoyo! 💜');
     };
 
     return (
-        <Modal
-            visible={paywallVisible}
-            transparent
-            animationType="slide"
-            onRequestClose={hidePaywall}
-        >
+        <Modal visible={paywallVisible} transparent animationType="slide" onRequestClose={hidePaywall}>
             <Animated.View entering={FadeIn} className="flex-1 bg-black/85 justify-end">
                 <Animated.View
                     entering={FadeInUp.springify().damping(18)}
-                    className="bg-slate-900 rounded-t-[40px] border-t border-white/10 overflow-hidden"
-                    style={{ maxHeight: '92%' }}
+                    className="bg-[#0b1120] rounded-t-[40px] border-t border-white/10 overflow-hidden"
+                    style={{ maxHeight: '94%' }}
                 >
                     <ScrollView
                         showsVerticalScrollIndicator={false}
-                        contentContainerStyle={{ paddingBottom: 40 }}
+                        contentContainerStyle={{ paddingBottom: 48 }}
                         bounces={false}
                     >
-                        {/* Header */}
-                        <View className="items-center pt-8 pb-4 px-6">
-                            <View className="w-20 h-20 rounded-[28px] bg-emerald-500/10 border border-emerald-500/20 items-center justify-center mb-4">
-                                <Text style={{ fontSize: 36 }}>⚡</Text>
+                        {/* ── Header ────────────────────────────────────── */}
+                        <View className="items-center pt-8 pb-5 px-6">
+                            <View className="w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 items-center justify-center mb-4">
+                                <Text style={{ fontSize: 30 }}>⚡</Text>
                             </View>
                             <Text className="text-white font-black text-2xl tracking-tighter mb-1 text-center">
                                 OSM SCOUT <Text className="text-emerald-400">PRO</Text>
                             </Text>
-                            {paywallReason ? (
-                                <Text className="text-slate-400 text-sm text-center leading-relaxed px-4">
-                                    {paywallReason}
-                                </Text>
-                            ) : (
-                                <Text className="text-slate-400 text-sm text-center leading-relaxed px-4">
-                                    Desbloquea todas las herramientas de scouting para dominar el mercado de OSM.
-                                </Text>
-                            )}
+                            <Text className="text-slate-400 text-sm text-center leading-relaxed px-6">
+                                {paywallReason || 'Desbloquea todas las herramientas para dominar el mercado de OSM.'}
+                            </Text>
                         </View>
 
-                        {/* Feature List */}
-                        <View className="mx-6 mb-6 bg-white/5 rounded-3xl border border-white/10 overflow-hidden">
-                            {FEATURES.map((f, i) => (
+                        {/* ── Feature grid (2 columns) ───────────────────── */}
+                        <View className="mx-5 mb-5 flex-row flex-wrap gap-2">
+                            {FEATURES.map(f => (
                                 <View
                                     key={f.label}
-                                    className={`flex-row items-center px-4 py-3 ${i < FEATURES.length - 1 ? 'border-b border-white/5' : ''}`}
+                                    className={`flex-row items-center gap-1.5 px-3 py-2 rounded-2xl border ${
+                                        f.free
+                                            ? 'bg-white/5 border-white/10'
+                                            : 'bg-emerald-500/10 border-emerald-500/20'
+                                    }`}
+                                    style={{ minWidth: '47%', flex: 1 }}
                                 >
-                                    <Text style={{ fontSize: 18, width: 30 }}>{f.icon}</Text>
-                                    <Text className="text-white flex-1 text-sm font-medium ml-2">{f.label}</Text>
-                                    <View className={`w-6 h-6 rounded-full items-center justify-center ${f.free ? 'bg-slate-700' : 'bg-emerald-500/20 border border-emerald-500/40'}`}>
-                                        <Text style={{ fontSize: 11 }}>{f.free ? '•' : '✓'}</Text>
-                                    </View>
-                                    <Text className={`text-[10px] font-black ml-2 uppercase w-8 text-right ${f.free ? 'text-slate-500' : 'text-emerald-400'}`}>
-                                        {f.free ? 'FREE' : 'PRO'}
+                                    <Text style={{ fontSize: 14 }}>{f.icon}</Text>
+                                    <Text
+                                        className={`text-[11px] font-bold flex-1`}
+                                        style={{ color: f.free ? '#94a3b8' : '#6ee7b7' }}
+                                        numberOfLines={1}
+                                    >
+                                        {f.label}
                                     </Text>
+                                    {!f.free && (
+                                        <View className="w-4 h-4 rounded-full bg-emerald-500/30 items-center justify-center">
+                                            <Text style={{ fontSize: 9, color: '#6ee7b7' }}>✓</Text>
+                                        </View>
+                                    )}
                                 </View>
                             ))}
                         </View>
 
-                        {/* Plan Cards */}
-                        <View className="mx-6 gap-3 mb-4">
-                            {PLANS.map(plan => (
-                                <TouchableOpacity key={plan.id} onPress={() => !loading && handleSubscribe(plan.id)} activeOpacity={0.85}>
-                                    <View className={`border rounded-3xl p-4 ${plan.color} ${loading ? 'opacity-60' : ''}`}>
-                                        {plan.badge && (
-                                            <View className="bg-amber-500 self-start px-3 py-1 rounded-full mb-2">
-                                                <Text className="text-black font-black text-[10px] tracking-widest">{plan.badge}</Text>
+                        {/* ── Plan selector (side by side) ──────────────── */}
+                        <View className="mx-5 mb-4">
+                            <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3 text-center">
+                                Elige tu plan
+                            </Text>
+                            <View className="flex-row gap-3">
+
+                                {/* Monthly */}
+                                <TouchableOpacity
+                                    className="flex-1"
+                                    onPress={() => setSelectedPlan('monthly')}
+                                    activeOpacity={0.8}
+                                >
+                                    <View className={`rounded-3xl p-4 items-center border-2 ${
+                                        selectedPlan === 'monthly'
+                                            ? 'border-emerald-500 bg-emerald-500/10'
+                                            : 'border-white/10 bg-white/5'
+                                    }`}>
+                                        <Text className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">Mensual</Text>
+                                        <Text className={`font-black text-3xl ${selectedPlan === 'monthly' ? 'text-white' : 'text-slate-400'}`}>
+                                            $2.99
+                                        </Text>
+                                        <Text className="text-slate-500 text-[10px] mt-0.5">por mes</Text>
+                                        {selectedPlan === 'monthly' && (
+                                            <View className="mt-3 bg-emerald-500/20 border border-emerald-500/40 px-3 py-1 rounded-full">
+                                                <Text className="text-emerald-400 text-[10px] font-black">SELECCIONADO</Text>
                                             </View>
                                         )}
-                                        <View className="flex-row justify-between items-center">
-                                            <View>
-                                                <Text className={`font-black text-base ${plan.labelColor}`}>{plan.label}</Text>
-                                                <Text className="text-slate-400 text-xs mt-0.5">Acceso completo PRO</Text>
-                                            </View>
-                                            <View className="items-end">
-                                                <Text className="text-white font-black text-2xl">{plan.price}</Text>
-                                                <Text className="text-slate-400 text-xs">{plan.period}</Text>
-                                            </View>
-                                        </View>
                                     </View>
                                 </TouchableOpacity>
-                            ))}
+
+                                {/* Lifetime — highlighted */}
+                                <TouchableOpacity
+                                    className="flex-1"
+                                    onPress={() => setSelectedPlan('lifetime')}
+                                    activeOpacity={0.8}
+                                >
+                                    <View className={`rounded-3xl p-4 items-center border-2 ${
+                                        selectedPlan === 'lifetime'
+                                            ? 'border-amber-500 bg-amber-500/10'
+                                            : 'border-white/10 bg-white/5'
+                                    }`}>
+                                        <View className="bg-amber-500 px-2 py-0.5 rounded-full mb-1.5 self-center">
+                                            <Text className="text-black font-black text-[9px] uppercase tracking-widest">🔥 Mejor valor</Text>
+                                        </View>
+                                        <Text className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">Vitalicio</Text>
+                                        <Text className={`font-black text-3xl ${selectedPlan === 'lifetime' ? 'text-white' : 'text-slate-400'}`}>
+                                            $14.99
+                                        </Text>
+                                        <Text className="text-slate-500 text-[10px] mt-0.5">pago único</Text>
+                                        {selectedPlan === 'lifetime' && (
+                                            <View className="mt-3 bg-amber-500/20 border border-amber-500/40 px-3 py-1 rounded-full">
+                                                <Text className="text-amber-400 text-[10px] font-black">SELECCIONADO</Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                </TouchableOpacity>
+
+                            </View>
                         </View>
 
-                        {/* Donate option */}
-                        <TouchableOpacity onPress={handleDonate} className="mx-6 mb-2">
-                            <View className="border border-fuchsia-500/30 bg-fuchsia-500/5 rounded-3xl p-4 flex-row items-center justify-between">
-                                <View>
-                                    <Text className="text-fuchsia-400 font-black text-sm">☕ Apoya el proyecto</Text>
-                                    <Text className="text-slate-400 text-xs mt-0.5">Donación voluntaria — cualquier monto</Text>
+                        {/* ── CTA Button ────────────────────────────────── */}
+                        <View className="mx-5 mb-3">
+                            <TouchableOpacity onPress={handleSubscribe} disabled={loading} activeOpacity={0.85}>
+                                <View className={`h-14 rounded-3xl items-center justify-center shadow-xl ${
+                                    loading ? 'opacity-60' : ''
+                                } ${
+                                    selectedPlan === 'lifetime'
+                                        ? 'bg-amber-500 shadow-amber-500/30'
+                                        : 'bg-emerald-500 shadow-emerald-500/30'
+                                }`}>
+                                    <Text className="text-black font-black text-sm tracking-widest uppercase">
+                                        {loading
+                                            ? 'Procesando...'
+                                            : selectedPlan === 'lifetime'
+                                                ? '🔥 Obtener Acceso Vitalicio'
+                                                : '⚡ Suscribirse por $2.99/mes'
+                                        }
+                                    </Text>
                                 </View>
-                                <Text style={{ fontSize: 24 }}>💜</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* ── Donate ────────────────────────────────────── */}
+                        <TouchableOpacity onPress={handleDonate} className="mx-5 mb-2">
+                            <View className="border border-fuchsia-500/25 bg-fuchsia-500/5 rounded-2xl px-4 py-3 flex-row items-center gap-3">
+                                <Text style={{ fontSize: 20 }}>☕</Text>
+                                <View className="flex-1">
+                                    <Text className="text-fuchsia-300 font-black text-xs">Apoya el proyecto</Text>
+                                    <Text className="text-slate-500 text-[10px]">Donación voluntaria — cualquier monto</Text>
+                                </View>
+                                <Text style={{ fontSize: 18 }}>💜</Text>
                             </View>
                         </TouchableOpacity>
 
-                        {/* Footer */}
-                        <View className="items-center mt-4 px-6 gap-3">
+                        {/* ── Footer ────────────────────────────────────── */}
+                        <View className="items-center mt-4 px-6 gap-2">
                             <TouchableOpacity onPress={handleRestore} disabled={loading}>
-                                <Text className="text-slate-500 text-xs underline">{loading ? 'Procesando...' : 'Restaurar compras'}</Text>
+                                <Text className="text-slate-500 text-[11px] underline">
+                                    {loading ? 'Procesando...' : 'Restaurar compras'}
+                                </Text>
                             </TouchableOpacity>
                             <TouchableOpacity onPress={hidePaywall}>
-                                <Text className="text-slate-600 text-xs">Continuar gratis (limitado)</Text>
+                                <Text className="text-slate-600 text-[11px]">Continuar gratis (limitado)</Text>
                             </TouchableOpacity>
-                            <Text className="text-slate-700 text-[10px] text-center leading-relaxed">
-                                Cancelación en cualquier momento. Suscripción gestionada por Google Play / App Store.
+                            <Text className="text-slate-700 text-[10px] text-center leading-relaxed px-4 mt-1">
+                                Cancela cuando quieras. Gestionado por Google Play.
                             </Text>
                         </View>
+
                     </ScrollView>
                 </Animated.View>
             </Animated.View>
