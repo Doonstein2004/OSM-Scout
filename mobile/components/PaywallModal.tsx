@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, Platform } from 'react-native';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import { useSubscription } from '../context/SubscriptionContext';
 import { purchaseMonthly, purchaseLifetime, restorePurchases } from '../lib/purchases';
@@ -69,12 +69,38 @@ export default function PaywallModal() {
     };
 
     return (
-        <Modal visible={paywallVisible} transparent animationType="slide" onRequestClose={hidePaywall}>
-            <Animated.View entering={FadeIn} className="flex-1 bg-black/85 justify-end">
+        <Modal visible={paywallVisible} transparent animationType={Platform.OS === 'web' ? 'fade' : 'slide'} onRequestClose={hidePaywall}>
+            <Animated.View
+                entering={FadeIn}
+                className="flex-1 bg-black/75"
+                style={Platform.OS === 'web'
+                    ? { justifyContent: 'center', alignItems: 'center' }
+                    : { justifyContent: 'flex-end' }
+                }
+            >
                 <Animated.View
                     entering={FadeInUp.springify().damping(18)}
-                    className="bg-[#0b1120] rounded-t-[40px] border-t border-white/10 overflow-hidden"
-                    style={{ maxHeight: '94%' }}
+                    style={Platform.OS === 'web'
+                        ? {
+                            width: '100%',
+                            maxWidth: 480,
+                            maxHeight: '90vh' as any,
+                            borderRadius: 24,
+                            overflow: 'hidden',
+                            borderWidth: 1,
+                            borderColor: 'rgba(255,255,255,0.08)',
+                            backgroundColor: '#0b1120',
+                        }
+                        : {
+                            backgroundColor: '#0b1120',
+                            borderTopLeftRadius: 40,
+                            borderTopRightRadius: 40,
+                            borderTopWidth: 1,
+                            borderColor: 'rgba(255,255,255,0.1)',
+                            overflow: 'hidden',
+                            maxHeight: '94%',
+                        }
+                    }
                 >
                     <ScrollView
                         showsVerticalScrollIndicator={false}
@@ -95,28 +121,38 @@ export default function PaywallModal() {
                         </View>
 
                         {/* ── Feature grid (2 columns) ───────────────────── */}
-                        <View className="mx-5 mb-5 flex-row flex-wrap gap-2">
+                        <View className="mx-5 mb-5" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                             {FEATURES.map(f => (
                                 <View
                                     key={f.label}
-                                    className={`flex-row items-center gap-1.5 px-3 py-2 rounded-2xl border ${
-                                        f.free
-                                            ? 'bg-white/5 border-white/10'
-                                            : 'bg-emerald-500/10 border-emerald-500/20'
-                                    }`}
-                                    style={{ minWidth: '47%', flex: 1 }}
+                                    style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        gap: 6,
+                                        paddingHorizontal: 12,
+                                        paddingVertical: 8,
+                                        borderRadius: 16,
+                                        borderWidth: 1,
+                                        width: '48%',
+                                        backgroundColor: f.free ? 'rgba(255,255,255,0.04)' : 'rgba(16,185,129,0.08)',
+                                        borderColor: f.free ? 'rgba(255,255,255,0.08)' : 'rgba(16,185,129,0.2)',
+                                    }}
                                 >
-                                    <Text style={{ fontSize: 14 }}>{f.icon}</Text>
+                                    <Text style={{ fontSize: 13 }}>{f.icon}</Text>
                                     <Text
-                                        className={`text-[11px] font-bold flex-1`}
-                                        style={{ color: f.free ? '#94a3b8' : '#6ee7b7' }}
                                         numberOfLines={1}
+                                        style={{
+                                            fontSize: 11,
+                                            fontWeight: '700',
+                                            flex: 1,
+                                            color: f.free ? '#94a3b8' : '#6ee7b7',
+                                        }}
                                     >
                                         {f.label}
                                     </Text>
                                     {!f.free && (
-                                        <View className="w-4 h-4 rounded-full bg-emerald-500/30 items-center justify-center">
-                                            <Text style={{ fontSize: 9, color: '#6ee7b7' }}>✓</Text>
+                                        <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: 'rgba(16,185,129,0.3)', alignItems: 'center', justifyContent: 'center' }}>
+                                            <Text style={{ fontSize: 8, color: '#6ee7b7' }}>✓</Text>
                                         </View>
                                     )}
                                 </View>

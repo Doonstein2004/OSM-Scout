@@ -49,17 +49,17 @@ export default function RootLayout() {
       <View style={{ 
         flex: 1, 
         width: '100%', 
-        maxWidth: 500, 
+        maxWidth: 900, 
         alignSelf: 'center', 
         backgroundColor: '#020617',
         borderLeftWidth: 1,
         borderRightWidth: 1,
         borderColor: 'rgba(255,255,255,0.05)',
-        // @ts-ignore - Shadow properties for web/native
+        // @ts-ignore
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.5,
-        shadowRadius: 20,
+        shadowRadius: 40,
         elevation: 10,
       }}>
         <ErrorBoundary>
