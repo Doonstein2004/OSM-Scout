@@ -1,7 +1,8 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView, Platform } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, Modal, ScrollView, Alert } from 'react-native';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import { useSubscription } from '../context/SubscriptionContext';
+import { purchaseMonthly, purchaseLifetime, restorePurchases } from '../lib/purchases';
 
 interface Feature {
     icon: string;
@@ -44,19 +45,52 @@ const PLANS = [
 
 export default function PaywallModal() {
     const { paywallVisible, paywallReason, hidePaywall, setPlan } = useSubscription();
+    const [loading, setLoading] = useState(false);
 
-    const handleSubscribe = (planId: string) => {
-        // TODO: Integrate RevenueCat purchase flow here
-        // For now, unlock immediately (dev/test mode)
+    const handleSubscribe = async (planId: string) => {
+        // ── DEV MODE: unlock immediately without payment ──
         if (__DEV__) {
             setPlan(planId === 'lifetime' ? 'lifetime' : 'pro');
             hidePaywall();
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const result = planId === 'lifetime'
+                ? await purchaseLifetime()
+                : await purchaseMonthly();
+
+            if (result.success && result.plan) {
+                setPlan(result.plan);
+                hidePaywall();
+            } else if (result.error !== 'cancelled') {
+                Alert.alert('Error de compra', result.error ?? 'Intenta de nuevo.');
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleRestore = async () => {
+        setLoading(true);
+        try {
+            const result = await restorePurchases();
+            if (result.success && result.plan) {
+                setPlan(result.plan);
+                hidePaywall();
+                Alert.alert('✅ Compras restauradas', 'Tu plan PRO ha sido activado.');
+            } else {
+                Alert.alert('Sin compras previas', 'No encontramos compras activas asociadas a esta cuenta.');
+            }
+        } finally {
+            setLoading(false);
         }
     };
 
     const handleDonate = () => {
         // TODO: Open Buy Me a Coffee / Stripe link
-        console.log('[Paywall] Donate pressed');
+        Alert.alert('Donaciones', 'Próximamente disponible. ¡Gracias por tu apoyo! 💜');
     };
 
     return (
@@ -118,8 +152,8 @@ export default function PaywallModal() {
                         {/* Plan Cards */}
                         <View className="mx-6 gap-3 mb-4">
                             {PLANS.map(plan => (
-                                <TouchableOpacity key={plan.id} onPress={() => handleSubscribe(plan.id)} activeOpacity={0.85}>
-                                    <View className={`border rounded-3xl p-4 ${plan.color}`}>
+                                <TouchableOpacity key={plan.id} onPress={() => !loading && handleSubscribe(plan.id)} activeOpacity={0.85}>
+                                    <View className={`border rounded-3xl p-4 ${plan.color} ${loading ? 'opacity-60' : ''}`}>
                                         {plan.badge && (
                                             <View className="bg-amber-500 self-start px-3 py-1 rounded-full mb-2">
                                                 <Text className="text-black font-black text-[10px] tracking-widest">{plan.badge}</Text>
@@ -153,8 +187,8 @@ export default function PaywallModal() {
 
                         {/* Footer */}
                         <View className="items-center mt-4 px-6 gap-3">
-                            <TouchableOpacity onPress={() => {/* TODO: RevenueCat restore */}}>
-                                <Text className="text-slate-500 text-xs underline">Restaurar compras</Text>
+                            <TouchableOpacity onPress={handleRestore} disabled={loading}>
+                                <Text className="text-slate-500 text-xs underline">{loading ? 'Procesando...' : 'Restaurar compras'}</Text>
                             </TouchableOpacity>
                             <TouchableOpacity onPress={hidePaywall}>
                                 <Text className="text-slate-600 text-xs">Continuar gratis (limitado)</Text>
