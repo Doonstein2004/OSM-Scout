@@ -5,6 +5,7 @@ import Animated, { FadeInUp, LinearTransition } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 import { getFlag, toNatStem } from '../lib/flags';
+import { Analytics } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../context/StoreContext';
 import { ScoutSkeleton } from '../components/ScoutSkeleton';
@@ -138,6 +139,16 @@ export default function ScoutScreen() {
 
     async function fetchPlayers(targetPage = page, isReset = false) {
         if (!isOnline) { Alert.alert('Sin conexión', 'Está viendo resultados en caché.'); return; }
+        
+        if (isReset) {
+            if (!canSearch) {
+                Analytics.trackLimitReached('searches');
+                showPaywall(`Alcanzaste tu límite de ${limits.dailySearches} búsquedas gratuitas de hoy.\nActualiza a PRO para búsquedas ilimitadas.`);
+                return;
+            }
+            Analytics.trackSearch({ sortBy, sortAscending, filterPos, filterAge, filterQuality });
+        }
+
         if ((loading || !hasMore) && !isReset) return;
 
         // ── Freemium gate ────────────────────────────────────────────────

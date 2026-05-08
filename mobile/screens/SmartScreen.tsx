@@ -9,6 +9,7 @@ import { findOptimalCombination, discoverCombosForPositions } from '../lib/scout
 import { getFlag } from '../lib/flags';
 import { useStore } from '../context/StoreContext';
 import { useSubscription } from '../context/SubscriptionContext';
+import { Analytics } from '../lib/analytics';
 
 export default function SmartScreen() {
     const { t } = useTranslation();
@@ -166,6 +167,10 @@ export default function SmartScreen() {
 
     // ── PRO gate: render upsell screen for free users ────────────────────
     if (!isPro) {
+        React.useEffect(() => {
+            Analytics.trackUpsellView('smart');
+        }, []);
+
         return (
             <ScrollView
                 className="flex-1 w-full bg-[#020617]"

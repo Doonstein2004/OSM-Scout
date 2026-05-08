@@ -7,6 +7,7 @@ import { useStore } from '../context/StoreContext';
 import { supabase } from '../lib/supabase';
 import { toNatStem, getFlag } from '../lib/flags';
 import { useSubscription } from '../context/SubscriptionContext';
+import { Analytics } from '../lib/analytics';
 
 
 
@@ -129,8 +130,12 @@ export default function FantasyScreen() {
         }
     };
 
-    // ── PRO gate ────────────────────────────────────────────────────
+    // ── PRO gate: render upsell screen for free users ────────────────────
     if (!isPro) {
+        React.useEffect(() => {
+            Analytics.trackUpsellView('fantasy');
+        }, []);
+
         return (
             <ScrollView
                 className="flex-1 w-full bg-[#020617]"

@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, Platform } from 'react-native';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import { useSubscription } from '../context/SubscriptionContext';
 import { purchaseMonthly, purchaseLifetime, restorePurchases } from '../lib/purchases';
+import { Analytics } from '../lib/analytics';
 
 interface Feature {
     icon: string;
@@ -28,7 +29,14 @@ export default function PaywallModal() {
     const [loading, setLoading] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'lifetime'>('lifetime');
 
+    useEffect(() => {
+        if (paywallVisible) {
+            Analytics.trackPaywallView(paywallReason || 'general');
+        }
+    }, [paywallVisible, paywallReason]);
+
     const handleSubscribe = async () => {
+        Analytics.trackPlanSelection(selectedPlan, paywallReason || 'general');
         if (__DEV__) {
             setPlan(selectedPlan === 'lifetime' ? 'lifetime' : 'pro');
             hidePaywall();
@@ -40,6 +48,7 @@ export default function PaywallModal() {
                 ? await purchaseLifetime()
                 : await purchaseMonthly();
             if (result.success && result.plan) {
+                Analytics.trackPurchaseSuccess(result.plan);
                 setPlan(result.plan);
                 hidePaywall();
             } else if (result.error !== 'cancelled') {

@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../context/StoreContext';
 import { useSubscription } from '../context/SubscriptionContext';
+import { Analytics } from '../lib/analytics';
 
 export default function ListsScreen() {
     const { t } = useTranslation();
@@ -20,6 +21,12 @@ export default function ListsScreen() {
     const { isPro, limits, showPaywall } = useSubscription();
 
     const FREE_LIMIT = limits.savedFilters; // 2 for free, -1 (unlimited) for PRO
+
+    React.useEffect(() => {
+        if (!isPro && savedFilters.length >= FREE_LIMIT) {
+            Analytics.trackLimitReached('lists');
+        }
+    }, [savedFilters.length, isPro]);
 
     const loadFilter = (f: any) => {
         if (f.name && f.name.includes('🪄')) {
@@ -66,7 +73,10 @@ export default function ListsScreen() {
             {/* ── Freemium banner ────────────────────────────────── */}
             {!isPro && (
                 <TouchableOpacity
-                    onPress={() => showPaywall(t('lists_upgrade_cta'))}
+                    onPress={() => {
+                        Analytics.trackPaywallView('lists');
+                        showPaywall(t('lists_upgrade_cta'));
+                    }}
                     activeOpacity={0.85}
                     className="mb-4"
                 >
