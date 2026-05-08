@@ -11,6 +11,47 @@ import { useStore } from '../context/StoreContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { Analytics } from '../lib/analytics';
 
+function TrendingSection() {
+    const { supabase } = useStore();
+    const { isPro, showPaywall } = useSubscription();
+    const [trending, setTrending] = React.useState<any[]>([]);
+    const { t } = useTranslation();
+
+    React.useEffect(() => {
+        const fetchTrending = async () => {
+            const { data, error } = await supabase.rpc('get_trending_players');
+            if (!error && data) setTrending(data);
+        };
+        fetchTrending();
+    }, []);
+
+    if (trending.length === 0) return null;
+
+    return (
+        <View className="mb-8">
+            <View className="flex-row items-center gap-2 mb-3">
+                <Text className="text-amber-400 text-xs font-black uppercase tracking-tighter">🔥 Trending Scouts</Text>
+                <View className="h-[1px] flex-1 bg-amber-400/20" />
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row gap-3">
+                {trending.map((p, i) => (
+                    <TouchableOpacity 
+                        key={i} 
+                        onPress={() => !isPro && showPaywall('trending')}
+                        className="bg-slate-900 border border-white/5 rounded-2xl px-4 py-3 mr-3 items-center min-w-[120px]"
+                    >
+                        <Text className="text-slate-500 text-[10px] font-bold mb-1">#{i+1} TOP</Text>
+                        <Text className={`text-white font-black text-sm ${!isPro ? 'opacity-20' : ''}`}>
+                            {isPro ? p.player_name : '••••••••'}
+                        </Text>
+                        {!isPro && <Text className="absolute text-[10px] text-amber-500 font-bold bottom-2">PRO 🔒</Text>}
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+        </View>
+    );
+}
+
 export default function SmartScreen() {
     const { t } = useTranslation();
     const { isPro, showPaywall } = useSubscription();
@@ -101,6 +142,9 @@ export default function SmartScreen() {
         setCombinationResult(null);
         setCalculating(true);
         try {
+            // Track each player in the target list for community trends
+            targetPlayers.forEach(p => Analytics.trackSmartAnalysis(p.name));
+            
             const res = await findOptimalCombination(supabase, targetPlayers);
             setCombinationResult(res);
         } catch (e) {
@@ -243,6 +287,10 @@ export default function SmartScreen() {
 
     return (
         <ScrollView className="px-6 py-4 flex-1 w-full bg-[#020617]" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+            {/* Trending Section (PRO only) */}
+            <TrendingSection />
+            
+            <View className="flex-row items-center justify-between mb-4">
             <Text className="text-3xl font-black text-white mb-2 uppercase">{t('score')}</Text>
             <Text className="text-slate-400 text-sm mb-4 leading-relaxed">{t('score_desc')}</Text>
 
@@ -496,10 +544,12 @@ export default function SmartScreen() {
                                                 </Text>
                                             </TouchableOpacity>
                                         </View>
-                                        <View className={`px-2 py-0.5 rounded ${trip.probability >= 50 ? 'bg-emerald-500' : trip.probability >= 15 ? 'bg-amber-400' : 'bg-slate-700'}`}>
-                                            <Text className={`font-black text-[10px] ${trip.probability >= 15 ? 'text-black' : 'text-white'}`}>{Math.round(trip.probability)}% PROB</Text>
-                                        </View>
-                                    </View>
+                                         <View className={`px-2 py-0.5 rounded-full ${trip.probability >= 70 ? 'bg-emerald-500' : trip.probability >= 30 ? 'bg-amber-400' : 'bg-rose-500'}`}>
+                                             <Text className={`font-black text-[9px] ${trip.probability >= 30 ? 'text-black' : 'text-white'}`}>
+                                                 {trip.probability >= 70 ? '🎯 ALTA PRECISION' : trip.probability >= 30 ? '⚖️ RIESGO MEDIO' : '⚠️ RIESGO ALTO'}
+                                             </Text>
+                                         </View>
+                                     </View>
                                     <View className="flex-row flex-wrap gap-2 mb-4">
                                         {Object.entries(trip.filters).map(([key, val]: [string, any]) => {
                                             if (!val || val === '' || val === 'Cualquiera' || val === 'Unknown') return null;

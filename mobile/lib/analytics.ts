@@ -92,6 +92,12 @@ export const Analytics = {
         section: feature 
     }),
 
+    trackSmartAnalysis: (playerName: string) => logEvent({
+        name: 'smart_analysis_performed',
+        section: 'smart',
+        metadata: { player_name: playerName }
+    }),
+
     trackMagicFilterSave: (isSmart: boolean) => logEvent({ 
         name: 'magic_filter_saved', 
         section: isSmart ? 'smart' : 'scout' 
