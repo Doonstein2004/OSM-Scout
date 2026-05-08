@@ -13,7 +13,7 @@ import { useSubscription } from '../context/SubscriptionContext';
 export default function SmartScreen() {
     const { t } = useTranslation();
     const { isPro, showPaywall } = useSubscription();
-    const {
+    const { 
         targetPlayers,
         setTargetPlayers,
         smartNationality,
@@ -35,6 +35,8 @@ export default function SmartScreen() {
         getEstMultiplier,
         getBlockEstimate
     } = useStore();
+
+    const canSaveFilter = isPro || savedFilters.length < 2;
 
     const [combinationResult, setCombinationResult] = useState<any>(null);
     const [generatedTrips, setGeneratedTrips] = useState<any[]>([]);
@@ -305,8 +307,20 @@ export default function SmartScreen() {
                                             <View className="flex-row justify-between items-center mb-3">
                                                 <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest">{t('magic_filters')}</Text>
                                                 {combinationResult.probability > 0 && (
-                                                    <TouchableOpacity onPress={() => saveSmartFilter(combinationResult)} className="bg-amber-500/20 px-3 py-1.5 rounded-xl border border-amber-500/30">
-                                                        <Text className="text-amber-400 font-bold text-[10px]">💾 {t('save_filter')}</Text>
+                                                    <TouchableOpacity
+                                                        onPress={() => canSaveFilter
+                                                            ? saveSmartFilter(combinationResult)
+                                                            : showPaywall('Has alcanzado el límite de filtros guardados.\nActualiza a PRO para guardar filtros ilimitados.')
+                                                        }
+                                                        className={`px-3 py-1.5 rounded-xl border ${
+                                                            canSaveFilter
+                                                                ? 'bg-amber-500/20 border-amber-500/30'
+                                                                : 'bg-white/5 border-white/10 opacity-50'
+                                                        }`}
+                                                    >
+                                                        <Text className={`font-bold text-[10px] ${canSaveFilter ? 'text-amber-400' : 'text-slate-500'}`}>
+                                                            {canSaveFilter ? '💾' : '🔒'} {t('save_filter')}
+                                                        </Text>
                                                     </TouchableOpacity>
                                                 )}
                                             </View>
@@ -464,8 +478,20 @@ export default function SmartScreen() {
                                     <View className="flex-row justify-between items-center mb-3">
                                         <View className="flex-row items-center gap-3">
                                             <Text className="text-white font-black uppercase text-xs">{t('options')} #{tIdx + 1}</Text>
-                                            <TouchableOpacity onPress={() => saveSmartFilter(trip)} className="bg-amber-500/20 px-2 py-1 rounded-lg border border-amber-500/30">
-                                                <Text className="text-amber-400 font-bold text-[10px]">💾 {t('save_filter')}</Text>
+                                            <TouchableOpacity
+                                                onPress={() => canSaveFilter
+                                                    ? saveSmartFilter(trip)
+                                                    : showPaywall('Has alcanzado el límite de filtros guardados.\nActualiza a PRO para guardar filtros ilimitados.')
+                                                }
+                                                className={`px-2 py-1 rounded-lg border ${
+                                                    canSaveFilter
+                                                        ? 'bg-amber-500/20 border-amber-500/30'
+                                                        : 'bg-white/5 border-white/10 opacity-50'
+                                                }`}
+                                            >
+                                                <Text className={`font-bold text-[10px] ${canSaveFilter ? 'text-amber-400' : 'text-slate-500'}`}>
+                                                    {canSaveFilter ? '💾' : '🔒'} {t('save_filter')}
+                                                </Text>
                                             </TouchableOpacity>
                                         </View>
                                         <View className={`px-2 py-0.5 rounded ${trip.probability >= 50 ? 'bg-emerald-500' : trip.probability >= 15 ? 'bg-amber-400' : 'bg-slate-700'}`}>

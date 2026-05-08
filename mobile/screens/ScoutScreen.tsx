@@ -107,6 +107,8 @@ export default function ScoutScreen() {
 
     const { canSearch, incrementSearchCount, showPaywall, isPro, dailySearchesUsed, limits } = useSubscription();
 
+    const canSaveFilter = isPro || limits.savedFilters === -1 || savedFilters.length < limits.savedFilters;
+
     const PAGE_SIZE = 50;
 
     // Load offline cache on mount if needed
@@ -250,6 +252,11 @@ export default function ScoutScreen() {
     };
 
     const saveCurrentFilter = async () => {
+        // ── Freemium gate for saved filters
+        if (!canSaveFilter) {
+            showPaywall(`Has alcanzado el límite de ${limits.savedFilters} filtros guardados.\nActualiza a PRO para guardar filtros ilimitados.`);
+            return;
+        }
         const parts = [];
         if (filterPos.length) parts.push(filterPos.map(p => t(p)).join(', '));
         if (filterDetailedPos.length) parts.push(filterDetailedPos.map(p => t(p)).join(', '));
@@ -450,8 +457,12 @@ export default function ScoutScreen() {
                 <View className="flex-row gap-2 mt-2">
                     {!!(filterPos.length > 0 || filterAge.length > 0 || filterQuality.length > 0 || filterNationality || filterLeague || filterClub || filterExactAge || filterExactQuality) && (
                         <>
-                            <Button variant="outline" onPress={saveCurrentFilter} className="bg-slate-900/50 border border-amber-500/40 h-12 rounded-2xl px-4 flex-[0.5] shadow-lg shadow-amber-500/10">
-                                <Button.Label className="text-amber-400 font-bold text-xs">💾</Button.Label>
+                            <Button variant="outline" onPress={saveCurrentFilter} className={`bg-slate-900/50 h-12 rounded-2xl px-4 flex-[0.5] shadow-lg ${
+                                    canSaveFilter
+                                        ? 'border border-amber-500/40 shadow-amber-500/10'
+                                        : 'border border-white/10 opacity-50'
+                                }`}>
+                                <Button.Label className={`font-bold text-xs ${canSaveFilter ? 'text-amber-400' : 'text-slate-500'}`}>{canSaveFilter ? '💾' : '🔒'}</Button.Label>
                             </Button>
                             <Button variant="outline" onPress={resetFilters} className="bg-slate-900/50 border border-white/10 h-12 rounded-2xl px-4 flex-[0.5]">
                                 <Button.Label className="text-white/70 font-bold text-xs">{t('clean')}</Button.Label>
