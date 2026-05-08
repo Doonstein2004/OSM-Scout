@@ -230,7 +230,7 @@ export default function SmartScreen() {
                     onPress={() => showPaywall()}
                     className="mt-3 items-center"
                 >
-                    <Text className="text-slate-500 text-xs">Ver planes y precios →</Text>
+                    <Text className="text-slate-500 text-xs">{t('view_plans')}</Text>
                 </TouchableOpacity>
             </ScrollView>
         );

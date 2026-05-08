@@ -478,7 +478,7 @@ export default function ScoutScreen() {
                             {!isOnline
                                 ? t('offline_mode').toUpperCase()
                                 : !canSearch
-                                    ? `🔒 LÍMITE DIARIO (${dailySearchesUsed}/${limits.dailySearches})`
+                                    ? `🔒 ${t('searches_limit_reached')} (${dailySearchesUsed}/${limits.dailySearches})`
                                     : !isPro
                                         ? `${t('search_players')} 🔍 (${dailySearchesUsed}/${limits.dailySearches})`
                                         : t('search_players') + ' 🔍'

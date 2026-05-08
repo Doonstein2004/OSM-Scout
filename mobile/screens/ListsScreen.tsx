@@ -63,26 +63,28 @@ export default function ListsScreen() {
             </View>
             <Text className="text-slate-400 text-sm mb-4 leading-relaxed px-2">{t('saved_empty_desc')}</Text>
 
-            {/* ── Freemium banner ─────────────────────────────────── */}
+            {/* ── Freemium banner ────────────────────────────────── */}
             {!isPro && (
                 <TouchableOpacity
-                    onPress={() => showPaywall('Actualiza a PRO para guardar filtros ilimitados y acceder a tus listas en cualquier momento.')}
+                    onPress={() => showPaywall(t('lists_upgrade_cta'))}
                     activeOpacity={0.85}
                     className="mb-4"
                 >
                     <View className="bg-amber-500/10 border border-amber-500/30 rounded-2xl px-4 py-3 flex-row items-center justify-between">
                         <View className="flex-1 mr-3">
                             <Text className="text-amber-400 font-black text-xs uppercase tracking-widest mb-0.5">
-                                {savedFilters.length >= FREE_LIMIT ? '🔒 Límite alcanzado' : `💾 ${savedFilters.length}/${FREE_LIMIT} listas usadas`}
+                                {savedFilters.length >= FREE_LIMIT
+                                    ? t('lists_limit_reached')
+                                    : t('lists_used', { used: savedFilters.length, max: FREE_LIMIT })}
                             </Text>
                             <Text className="text-amber-300/70 text-[10px]">
                                 {savedFilters.length >= FREE_LIMIT
-                                    ? 'Actualiza a PRO para guardar más filtros →'
-                                    : 'PRO = listas ilimitadas. Toca para ver planes.'}
+                                    ? t('lists_upgrade_cta')
+                                    : t('lists_pro_pitch')}
                             </Text>
                         </View>
                         <View className="bg-amber-500 px-3 py-1.5 rounded-xl">
-                            <Text className="text-black font-black text-[10px] uppercase">PRO</Text>
+                            <Text className="text-black font-black text-[10px] uppercase">{t('pro_badge')}</Text>
                         </View>
                     </View>
                 </TouchableOpacity>
@@ -90,8 +92,8 @@ export default function ListsScreen() {
 
             {savedFilters.length === 0 ? (
                 <View className="py-20 items-center justify-center opacity-40">
-                    <Text className="text-6xl mb-4">📭</Text>
-                    <Text className="text-white text-center font-bold text-sm">Vacío</Text>
+                    <Text className="text-6xl mb-4">💭</Text>
+                    <Text className="text-white text-center font-bold text-sm">{t('saved_empty_desc')}</Text>
                 </View>
             ) : (
                 savedFilters.map((filter: any, index: number) => {
@@ -110,7 +112,7 @@ export default function ListsScreen() {
                                 <View className="flex-row items-center gap-2 mb-3 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
                                     <Text>🔒</Text>
                                     <Text className="text-amber-400 font-black text-[10px] uppercase tracking-widest flex-1">
-                                        Lista bloqueada — Actualiza a PRO
+                                        {t('list_locked_label')}
                                     </Text>
                                 </View>
                             )}
@@ -133,9 +135,9 @@ export default function ListsScreen() {
                                 {isLocked ? (
                                     <Button
                                         className="flex-1 bg-amber-500 h-12 rounded-2xl shadow-lg shadow-amber-500/20"
-                                        onPress={() => showPaywall('Actualiza a PRO para desbloquear todas tus listas guardadas.')}
+                                        onPress={() => showPaywall(t('lists_upgrade_cta'))}
                                     >
-                                        <Button.Label className="text-black font-black uppercase tracking-widest text-xs">⚡ Desbloquear PRO</Button.Label>
+                                        <Button.Label className="text-black font-black uppercase tracking-widest text-xs">{t('unlock_pro_cta')}</Button.Label>
                                     </Button>
                                 ) : (
                                     <>
