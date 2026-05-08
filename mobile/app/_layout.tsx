@@ -3,6 +3,7 @@ import 'react-native-url-polyfill/auto';
 import { inject } from '@vercel/analytics';
 import '../lib/i18n';
 import { Stack } from 'expo-router';
+import { useEffect } from 'react';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { StoreProvider } from '../context/StoreContext';
 import { HeroUINativeProvider } from 'heroui-native';
@@ -13,6 +14,7 @@ import { useServiceWorker } from '../hooks/useServiceWorker';
 import { SubscriptionProvider } from '../context/SubscriptionContext';
 import PaywallModal from '../components/PaywallModal';
 import { View } from 'react-native';
+import { initializePurchases } from '../lib/purchases';
 import '../global.css';
 
 inject({ mode: 'production' });
@@ -38,6 +40,11 @@ export const metadata = {
 
 function AppInitializer({ children }: { children: React.ReactNode }) {
   useInitializeData();
+
+  useEffect(() => {
+    initializePurchases();
+  }, []);
+
   return <>{children}</>;
 }
 
