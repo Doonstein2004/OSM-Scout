@@ -21,7 +21,10 @@ Este documento resume la implementación técnica del modelo **Freemium** y la i
 ### 3. Gating de Funcionalidades (Freemium)
 - **Scout Screen**: Límite diario de búsquedas configurado (5 para usuarios gratis, ilimitado para PRO).
 - **Lists Screen**: Límite de 2 listas guardadas para usuarios gratis.
-- **Smart/Fantasy Screens**: Acceso bloqueado mediante pantalla de upsell para usuarios gratis.
+- **Smart Analysis PRO**:
+    - **Tendencias**: Sección de jugadores más buscados por la comunidad (bloqueado para gratuitos).
+    - **Precisión**: Indicadores visuales de riesgo (`🎯 ALTA PRECISIÓN`) para optimizar el uso del Scout.
+- **Fantasy Optimizer**: Acceso bloqueado mediante pantalla de upsell para usuarios gratis.
 - **Modales de Pago**: Paywall responsivo que se adapta a Web (diálogo centrado) y Mobile (bottom sheet).
 
 ### 4. Diseño y UX

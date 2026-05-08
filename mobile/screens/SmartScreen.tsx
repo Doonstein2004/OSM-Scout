@@ -10,6 +10,7 @@ import { getFlag } from '../lib/flags';
 import { useStore } from '../context/StoreContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { Analytics } from '../lib/analytics';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence } from 'react-native-reanimated';
 
 function TrendingSection() {
     const { supabase } = useStore();
@@ -17,10 +18,40 @@ function TrendingSection() {
     const [trending, setTrending] = React.useState<any[]>([]);
     const { t } = useTranslation();
 
+    const pulse = useSharedValue(1);
+
+    const MOCK_TRENDING = [
+        { player_name: 'Lamine Yamal', search_count: 150 },
+        { player_name: 'Viktor Gyökeres', search_count: 120 },
+        { player_name: 'Endrick', search_count: 90 },
+        { player_name: 'Estêvão', search_count: 85 },
+        { player_name: 'Kvaratskhelia', search_count: 70 },
+    ];
+
     React.useEffect(() => {
+        pulse.value = withRepeat(
+            withSequence(
+                withTiming(1.2, { duration: 1000 }),
+                withTiming(1, { duration: 1000 })
+            ),
+            -1,
+            true
+        );
+
         const fetchTrending = async () => {
-            const { data, error } = await supabase.rpc('get_trending_players');
-            if (!error && data) setTrending(data);
+            try {
+                const { data, error } = await supabase.rpc('get_trending_players');
+                if (!error && data && data.length > 0) {
+                    setTrending(data);
+                } else {
+                    if (__DEV__) {
+                        console.log('[Trending] No data or error, using mocks');
+                        setTrending(MOCK_TRENDING);
+                    }
+                }
+            } catch (e) {
+                if (__DEV__) setTrending(MOCK_TRENDING);
+            }
         };
         fetchTrending();
     }, []);
@@ -44,7 +75,14 @@ function TrendingSection() {
                         <Text className={`text-white font-black text-sm ${!isPro ? 'opacity-20' : ''}`}>
                             {isPro ? p.player_name : '••••••••'}
                         </Text>
-                        {!isPro && <Text className="absolute text-[10px] text-amber-500 font-bold bottom-2">PRO 🔒</Text>}
+                        {!isPro && (
+                            <Animated.Text 
+                                style={[useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }))]}
+                                className="absolute text-[10px] text-amber-500 font-bold bottom-2"
+                            >
+                                PRO 🔒
+                            </Animated.Text>
+                        )}
                     </TouchableOpacity>
                 ))}
             </ScrollView>

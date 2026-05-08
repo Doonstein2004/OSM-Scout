@@ -10,8 +10,7 @@
     "newArchEnabled": true,
     "scheme": "osm-scout",
     "plugins": [
-      "expo-router",
-      "react-native-purchases"
+      "expo-router"
     ],
     "splash": {
       "image": "./assets/splash.jpg",
