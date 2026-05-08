@@ -102,6 +102,25 @@ export default function PaywallModal() {
                         }
                     }
                 >
+                    {/* ── Close button ──────────────────────────────── */}
+                    <TouchableOpacity
+                        onPress={hidePaywall}
+                        style={{
+                            position: 'absolute',
+                            top: 16,
+                            right: 16,
+                            zIndex: 10,
+                            width: 32,
+                            height: 32,
+                            borderRadius: 16,
+                            backgroundColor: 'rgba(255,255,255,0.08)',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                    >
+                        <Text style={{ color: '#94a3b8', fontSize: 18, lineHeight: 20, fontWeight: '700' }}>×</Text>
+                    </TouchableOpacity>
+
                     <ScrollView
                         showsVerticalScrollIndicator={false}
                         contentContainerStyle={{ paddingBottom: 48 }}
