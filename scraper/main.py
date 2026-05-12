@@ -55,7 +55,7 @@ def is_special_league(league_name):
 
 
 # Configuración para empezar desde una liga específica (poner None para empezar desde el principio)
-START_FROM = None
+START_FROM = 'Malaysia'
 
 def parse_value_string(value_str):
     if not isinstance(value_str, str): return 0, "N/A"
@@ -164,145 +164,160 @@ def scrape_osm(username, password):
         found_start = False if START_FROM else True
         
         for i in range(num_leagues):
-            try:
-                row = page.locator("table#leaguetypes-table tbody tr.clickable").nth(i)
-                league_name = row.locator("td span.semi-bold").inner_text().strip()
-                
-                if is_special_league(league_name):
-                    logger.info(f"⏭️ Saltando Liga Especial: {league_name}")
-                    continue
+            league_success = False
+            for league_attempt in range(3): # 3 intentos por liga
+                try:
+                    # Asegurarnos de estar en la página correcta si no es el primer intento
+                    if league_attempt > 0:
+                        logger.info(f"🔄 Reintentando Liga (Intento {league_attempt + 1}/3)...")
+                        if not safe_navigate(page, "https://en.onlinesoccermanager.com/LeagueTypes", "table#leaguetypes-table"):
+                            continue
 
-                if not found_start:
-                    if START_FROM.lower() in league_name.lower():
-                        found_start = True
-                        logger.info(f"📍 Punto de inicio encontrado: {league_name}")
-                    else:
-                        logger.debug(f"⏭️ Saltando (buscando {START_FROM}): {league_name}")
-                        continue
+                    row = page.locator("table#leaguetypes-table tbody tr.clickable").nth(i)
+                    league_name = row.locator("td span.semi-bold").inner_text().strip()
+                    
+                    if is_special_league(league_name):
+                        if league_attempt == 0: logger.info(f"⏭️ Saltando Liga Especial: {league_name}")
+                        league_success = True
+                        break
 
-                country = league_name.split(' 1st')[0].split(' 2nd')[0].split(' Division')[0].strip()
-                logger.info(f"\n🏆 Liga: {league_name} | País: {country}")
-                row.click()
-                
-                page.wait_for_selector("table#leaguetypes-table thead th", timeout=30000)
-                league_url = page.url # Guardar URL para recuperación
-                logger.debug(f"    🔗 URL de la Liga: {league_url}")
-                
-                headers = page.locator("table#leaguetypes-table thead th")
-                header_map = {"club": 0, "obj": 1, "val": 2, "inc": 3}
-                for h in range(headers.count()):
-                    txt = headers.nth(h).inner_text().lower().strip()
-                    if "club" in txt: header_map["club"] = h
-                    elif "obj" in txt or "goal" in txt: header_map["obj"] = h
-                    elif "val" in txt: header_map["val"] = h
-                    elif "inc" in txt or "funds" in txt: header_map["inc"] = h
+                    if not found_start:
+                        if START_FROM.lower() in league_name.lower():
+                            found_start = True
+                            logger.info(f"📍 Punto de inicio encontrado: {league_name}")
+                        else:
+                            if league_attempt == 0: logger.debug(f"⏭️ Saltando (buscando {START_FROM}): {league_name}")
+                            league_success = True
+                            break
 
-                # Paso 1: Obtener la lista de nombres de todos los clubes primero
-                club_names = []
-                rows_loc = page.locator("table#leaguetypes-table tbody tr.clickable")
-                for c_idx in range(rows_loc.count()):
-                    name = rows_loc.nth(c_idx).locator("td").nth(header_map["club"]).locator("span[data-bind*='text: name']").inner_text().strip()
-                    if name:
-                        club_names.append(name)
-                
-                num_clubs = len(club_names)
-                logger.debug(f"    📋 Lista de clubes detectada ({num_clubs}): {', '.join(club_names[:5])}...")
-                
-                clubs_in_league = []
+                    country = league_name.split(' 1st')[0].split(' 2nd')[0].split(' Division')[0].strip()
+                    logger.info(f"\n🏆 Liga: {league_name} | País: {country}")
+                    row.click()
+                    
+                    page.wait_for_selector("table#leaguetypes-table thead th", timeout=45000)
+                    league_url = page.url # Guardar URL para recuperación
+                    logger.debug(f"    🔗 URL de la Liga: {league_url}")
+                    
+                    headers = page.locator("table#leaguetypes-table thead th")
+                    header_map = {"club": 0, "obj": 1, "val": 2, "inc": 3}
+                    for h in range(headers.count()):
+                        txt = headers.nth(h).inner_text().lower().strip()
+                        if "club" in txt: header_map["club"] = h
+                        elif "obj" in txt or "goal" in txt: header_map["obj"] = h
+                        elif "val" in txt: header_map["val"] = h
+                        elif "inc" in txt or "funds" in txt: header_map["inc"] = h
 
-                for j, club_target in enumerate(club_names):
-                    max_retries = 3
-                    club_name = club_target 
-                    for attempt in range(max_retries):
-                        try:
-                            # Buscar la fila que contiene exactamente este nombre de club
-                            # Usamos comillas dobles y escape para nombres con apóstrofes
-                            safe_target = club_target.replace('"', '\\"')
-                            current_club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:has-text(\"{safe_target}\"))").first
-                            
-                            if not current_club_row.is_visible(timeout=5000):
-                                logger.warning(f"    ⚠️ No se visualiza la fila de {club_target}. Recargando liga...")
-                                if not safe_navigate(page, league_url, "table#leaguetypes-table"):
-                                    raise Exception("No se pudo recargar la liga.")
-                                handle_popups(page)
-                                current_club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:has-text(\"{safe_target}\"))").first
+                    # Paso 1: Obtener la lista de nombres de todos los clubes primero
+                    club_names = []
+                    rows_loc = page.locator("table#leaguetypes-table tbody tr.clickable")
+                    for c_idx in range(rows_loc.count()):
+                        name = rows_loc.nth(c_idx).locator("td").nth(header_map["club"]).locator("span[data-bind*='text: name']").inner_text().strip()
+                        if name:
+                            club_names.append(name)
+                    
+                    num_clubs = len(club_names)
+                    logger.debug(f"    📋 Lista de clubes detectada ({num_clubs}): {', '.join(club_names[:5])}...")
+                    
+                    clubs_in_league = []
 
-                            current_club_row.scroll_into_view_if_needed()
-                            tds = current_club_row.locator("td")
-                            
-                            # Re-extraer datos de la fila (objetivo, valores)
-                            objective = tds.nth(header_map["obj"]).inner_text().strip()
-                            
-                            squad_val_str = ""
-                            for _ in range(5):
-                                squad_val_str = tds.nth(header_map["val"]).inner_text().strip()
-                                if squad_val_str: break
-                                time.sleep(0.5)
-                            
-                            fixed_income_str = ""
-                            if tds.count() > header_map["inc"]:
-                                for _ in range(3):
-                                    fixed_income_str = tds.nth(header_map["inc"]).inner_text().strip()
-                                    if fixed_income_str: break
-                                    time.sleep(0.3)
-
-                            logger.info(f"  ➡️ Procesando Club {j+1}/{num_clubs}: {club_name} | Intento {attempt+1}")
-                            current_club_row.click()
-                            
-                            # Verificación de carga
-                            header_selector = 'h2[data-bind="text: name"]'
-                            safe_club_name = club_name.replace('"', '\\"')
+                    for j, club_target in enumerate(club_names):
+                        max_retries = 3
+                        club_name = club_target 
+                        for attempt in range(max_retries):
                             try:
-                                page.wait_for_selector(f'{header_selector}:has-text("{safe_club_name}")', timeout=12000)
-                            except:
+                                # Buscar la fila que contiene exactamente este nombre de club
+                                safe_target = club_target.replace('"', '\\"')
+                                current_club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:has-text(\"{safe_target}\"))").first
+                                
+                                if not current_club_row.is_visible(timeout=5000):
+                                    logger.warning(f"    ⚠️ No se visualiza la fila de {club_target}. Recargando liga...")
+                                    if not safe_navigate(page, league_url, "table#leaguetypes-table"):
+                                        raise Exception("No se pudo recargar la liga.")
+                                    handle_popups(page)
+                                    current_club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:has-text(\"{safe_target}\"))").first
+
+                                current_club_row.scroll_into_view_if_needed()
+                                tds = current_club_row.locator("td")
+                                
+                                # Re-extraer datos de la fila (objetivo, valores)
+                                objective = tds.nth(header_map["obj"]).inner_text().strip()
+                                
+                                squad_val_str = ""
+                                for _ in range(5):
+                                    squad_val_str = tds.nth(header_map["val"]).inner_text().strip()
+                                    if squad_val_str: break
+                                    time.sleep(0.5)
+                                
+                                fixed_income_str = ""
+                                if tds.count() > header_map["inc"]:
+                                    for _ in range(3):
+                                        fixed_income_str = tds.nth(header_map["inc"]).inner_text().strip()
+                                        if fixed_income_str: break
+                                        time.sleep(0.3)
+
+                                logger.info(f"  ➡️ Procesando Club {j+1}/{num_clubs}: {club_name} | Intento {attempt+1}")
+                                current_club_row.click()
+                                
+                                # Verificación de carga
+                                header_selector = 'h2[data-bind="text: name"]'
+                                safe_club_name = club_name.replace('"', '\\"')
+                                try:
+                                    page.wait_for_selector(f'{header_selector}:has-text("{safe_club_name}")', timeout=15000)
+                                except:
+                                    handle_popups(page)
+                                    # Evitar click_force si ya estamos en la página del equipo
+                                    if "LeagueTypes/Team" not in page.url:
+                                        current_club_row.click(force=True, timeout=5000)
+                                    page.wait_for_selector(f'{header_selector}:has-text("{safe_club_name}")', timeout=15000)
+
+                                players = parse_player_data(page, club_name)
+                                if not players:
+                                    raise Exception("No se pudieron extraer jugadores.")
+
+                                club_data = {
+                                    "name": club_name, "objective": objective, "squad_value": squad_val_str,
+                                    "fixed_income": fixed_income_str, "players": players
+                                }
+                                clubs_in_league.append(club_data)
+                                
+                                # Sync Supabase
+                                sync_to_supabase([{
+                                    "league_name": league_name, "country": country, "clubs": [club_data]
+                                }])
+                                
+                                # Volver atrás
+                                page.go_back(wait_until="domcontentloaded", timeout=20000)
+                                page.wait_for_selector("table#leaguetypes-table", timeout=15000)
+                                break # Exito!
+                            except Exception as e:
+                                logger.error(f"    ❌ Error en club {j} (Intento {attempt+1}): {e}")
+                                if attempt == max_retries - 1:
+                                    logger.error(f"    ‼️ Fallo definitivo en {club_name}")
+                                
                                 handle_popups(page)
-                                # Evitar click_force si ya estamos en la página del equipo
-                                if "LeagueTypes/Team" not in page.url:
-                                    current_club_row.click(force=True, timeout=5000)
-                                page.wait_for_selector(f'{header_selector}:has-text("{safe_club_name}")', timeout=15000)
+                                logger.info(f"    🔄 Intentando recuperar navegando a: {league_url}")
+                                if not safe_navigate(page, league_url, "table#leaguetypes-table"):
+                                    logger.error(f"    💥 Fallo crítico recuperando liga {league_url}")
+                                    raise Exception(f"No se pudo recuperar la navegación a la liga.")
+                                time.sleep(2)
 
-                            players = parse_player_data(page, club_name)
-                            if not players:
-                                raise Exception("No se pudieron extraer jugadores.")
+                    leagues_data_final.append({"league_name": league_name, "clubs": clubs_in_league})
+                    
+                    # Ir a la lista de ligas
+                    if not safe_navigate(page, "https://en.onlinesoccermanager.com/LeagueTypes", "table#leaguetypes-table"):
+                        logger.warning("    ⚠️ No se pudo volver a la lista de ligas normalmente.")
+                    
+                    league_success = True
+                    break # Éxito en la liga, salir del bucle de reintentos
 
-                            club_data = {
-                                "name": club_name, "objective": objective, "squad_value": squad_val_str,
-                                "fixed_income": fixed_income_str, "players": players
-                            }
-                            clubs_in_league.append(club_data)
-                            
-                            # Sync Supabase
-                            sync_to_supabase([{
-                                "league_name": league_name, "country": country, "clubs": [club_data]
-                            }])
-                            
-                            # Volver atrás
-                            page.go_back(wait_until="domcontentloaded", timeout=20000)
-                            page.wait_for_selector("table#leaguetypes-table", timeout=15000)
-                            break # Exito!
-                        except Exception as e:
-                            logger.error(f"    ❌ Error en club {j} (Intento {attempt+1}): {e}")
-                            if attempt == max_retries - 1:
-                                logger.error(f"    ‼️ Fallo definitivo en {club_name}")
-                            
-                            handle_popups(page)
-                            logger.info(f"    🔄 Intentando recuperar navegando a: {league_url}")
-                            if not safe_navigate(page, league_url, "table#leaguetypes-table"):
-                                logger.error(f"    💥 Fallo crítico recuperando liga {league_url}")
-                                raise Exception(f"No se pudo recuperar la navegación a la liga.")
-                            time.sleep(2)
-
-                leagues_data_final.append({"league_name": league_name, "clubs": clubs_in_league})
-                
-                # Ir a la lista de ligas
-                if not safe_navigate(page, "https://en.onlinesoccermanager.com/LeagueTypes", "table#leaguetypes-table"):
-                    logger.warning("    ⚠️ No se pudo volver a la lista de ligas normalmente.")
-
-            except Exception as e:
-                logger.error(f"💥 Error grave en liga {i}: {e}")
-                logger.info("    ⏳ Esperando 15s para estabilizar conexión...")
-                time.sleep(15)
-                safe_navigate(page, "https://en.onlinesoccermanager.com/LeagueTypes", "table#leaguetypes-table", max_retries=5)
+                except Exception as e:
+                    logger.error(f"💥 Error grave en liga {i} (Intento {league_attempt + 1}/3): {e}")
+                    if league_attempt < 2:
+                        logger.info("    ⏳ Esperando 15s antes del reintento de la liga...")
+                        time.sleep(15)
+                        handle_popups(page)
+                    else:
+                        logger.error(f"    ‼️ Fallo definitivo en liga {i}. Saltando al siguiente país.")
 
         # Final save
         with open("osm_data.json", "w", encoding="utf-8") as f:

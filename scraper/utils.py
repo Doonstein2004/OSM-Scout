@@ -78,28 +78,32 @@ def safe_navigate(page: Page, url: str, verify_selector: str = None, max_retries
         try:
             logger.debug(f"  🌐 Navegando a {url} (Intento {attempt + 1}/{max_retries})...")
             # Usamos 'domcontentloaded' por defecto ya que OSM es pesado
-            page.goto(url, wait_until='domcontentloaded', timeout=45000)
+            # Aumentamos timeout a 60s para páginas muy pesadas
+            page.goto(url, wait_until='domcontentloaded', timeout=60000)
             
             if verify_selector:
-                page.wait_for_selector(verify_selector, timeout=15000)
+                # Aumentamos timeout del selector a 20s
+                page.wait_for_selector(verify_selector, timeout=20000)
             
             return True
         except Exception as e:
             error_str = str(e)
-            is_conn_error = "10060" in error_str or "ECONNRESET" in error_str or "ETIMEDOUT" in error_str
+            is_conn_error = any(msg in error_str for msg in ["10060", "ECONNRESET", "ETIMEDOUT", "Timeout"])
             
-            wait_time = 10 if is_conn_error else 2
+            wait_time = 15 if is_conn_error else 5
             logger.warning(f"  ⚠️ Error de navegación ({attempt + 1}/{max_retries}): {error_str}")
             
             if attempt < max_retries - 1:
                 if is_conn_error:
-                    logger.info(f"  🔌 Error de conexión detectado. Esperando {wait_time}s antes de reintentar...")
+                    logger.info(f"  🔌 Posible problema de conexión/timeout. Esperando {wait_time}s antes de reintentar...")
                 
                 time.sleep(wait_time)
                 
                 # Si estamos en la URL correcta pero falló algo, intentar recargar
                 if page.url == url:
-                    try: page.reload(wait_until='domcontentloaded', timeout=30000)
+                    try: 
+                        logger.info(f"  🔄 Intentando recargar página...")
+                        page.reload(wait_until='domcontentloaded', timeout=45000)
                     except: pass
     return False
 
