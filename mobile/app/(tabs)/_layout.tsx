@@ -119,6 +119,16 @@ export default function TabLayout() {
           }}
         />
       </Tabs>
+
+      {__DEV__ && (
+        <TouchableOpacity 
+          onPress={() => showPaywall('debug_force')}
+          className="absolute bottom-24 right-4 bg-red-600 w-12 h-12 rounded-full items-center justify-center shadow-lg z-50 opacity-80"
+          style={{ elevation: 5 }}
+        >
+          <Text className="text-white font-bold">🛠️</Text>
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }

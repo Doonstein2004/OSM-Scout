@@ -30,44 +30,64 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
-  if (url.origin !== location.origin) return;
+  // Skip cross-origin requests (Stripe, RevenueCat, etc.)
+  if (url.origin !== location.origin || url.hostname.includes('revenuecat.com') || url.hostname.includes('stripe.com')) return;
   
+  // Skip non-GET requests
+  if (event.request.method !== 'GET') return;
+
   if (url.pathname.startsWith('/api/') || url.hostname.includes('supabase')) {
     event.respondWith(staleWhileRevalidate(event.request));
     return;
   }
   
-  if (event.request.method !== 'GET') return;
-  
   event.respondWith(
     caches.match(event.request).then((cached) => {
-      const fetched = fetch(event.request).then((response) => {
-        const clone = response.clone();
-        if (response.ok) {
-          caches.open(RUNTIME_CACHE).then((cache) => {
-            cache.put(event.request, clone);
+      if (cached) return cached;
+
+      return fetch(event.request)
+        .then((response) => {
+          if (response && response.ok) {
+            const clone = response.clone();
+            caches.open(RUNTIME_CACHE).then((cache) => {
+              cache.put(event.request, clone);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          return new Response(JSON.stringify({ error: 'offline' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
           });
-        }
-        return response;
-      }).catch(() => cached);
-      return cached || fetched;
+        });
     })
   );
 });
 
 async function staleWhileRevalidate(request) {
   const cached = await caches.match(request);
-  const fetched = fetch(request).then((response) => {
-    if (response.ok) {
-      const clone = response.clone();
-      caches.open(RUNTIME_CACHE).then((cache) => {
-        cache.put(request, clone);
-      });
-    }
-    return response;
-  }).catch(() => null);
   
-  return cached || fetched || new Response(JSON.stringify({ error: 'offline' }), {
+  const fetchedPromise = fetch(request)
+    .then((response) => {
+      if (response && response.ok) {
+        const clone = response.clone();
+        caches.open(RUNTIME_CACHE).then((cache) => {
+          cache.put(request, clone);
+        });
+      }
+      return response;
+    })
+    .catch(() => null);
+
+  if (cached) {
+    return cached;
+  }
+
+  const response = await fetchedPromise;
+  if (response) return response;
+
+  return new Response(JSON.stringify({ error: 'offline' }), {
     status: 503,
     headers: { 'Content-Type': 'application/json' }
   });

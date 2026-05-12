@@ -1,18 +1,20 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { checkProEntitlement, restorePurchases as rcRestorePurchases } from '../lib/purchases';
+import { Platform, AppState, AppStateStatus } from 'react-native';
 
-// ─── Plan definition ────────────────────────────────────────────────────────
+// Plan definition
 
 export type Plan = 'free' | 'pro' | 'lifetime';
 
 export interface PlanLimits {
-    dailySearches: number;       // max searches per day (-1 = unlimited)
-    savedFilters: number;        // max saved filter presets
-    smartAnalysis: boolean;      // access to SMART screen
-    leagueTracking: boolean;     // access to Leagues screen
-    fantasyTools: boolean;       // access to Fantasy screen
-    adsEnabled: boolean;         // whether to show ads
-    exportLists: boolean;        // export player lists
+    dailySearches: number;
+    savedFilters: number;
+    smartAnalysis: boolean;
+    leagueTracking: boolean;
+    fantasyTools: boolean;
+    adsEnabled: boolean;
+    exportLists: boolean;
 }
 
 export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
@@ -45,35 +47,27 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     },
 };
 
-// ─── Context types ───────────────────────────────────────────────────────────
-
 interface SubscriptionState {
     plan: Plan;
     limits: PlanLimits;
     isPro: boolean;
-
-    // Daily search tracking
     dailySearchesUsed: number;
     canSearch: boolean;
     incrementSearchCount: () => Promise<void>;
-
-    // Paywall
     paywallVisible: boolean;
     paywallReason: string;
     showPaywall: (reason?: string) => void;
     hidePaywall: () => void;
-
-    // Feature gates
+    canSearch: boolean;
+    successModalVisible: boolean;
+    showSuccess: () => void;
+    hideSuccess: () => void;
     canUseFeature: (feature: keyof PlanLimits) => boolean;
-
-    // For future RevenueCat integration
     setPlan: (plan: Plan) => void;
     restorePurchases: () => Promise<void>;
 }
 
 const SubscriptionContext = createContext<SubscriptionState | undefined>(undefined);
-
-// ─── Storage keys ────────────────────────────────────────────────────────────
 
 const STORAGE_KEYS = {
     plan: 'subscription_plan',
@@ -81,18 +75,20 @@ const STORAGE_KEYS = {
     searchDate: 'daily_search_date',
 } as const;
 
-// ─── Provider ────────────────────────────────────────────────────────────────
-
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
     const [plan, setPlanState] = useState<Plan>('free');
     const [dailySearchesUsed, setDailySearchesUsed] = useState(0);
     const [paywallVisible, setPaywallVisible] = useState(false);
     const [paywallReason, setPaywallReason] = useState('');
-
+    const [successModalVisible, setSuccessModalVisible] = useState(false);
+    const [isTransitioning, setIsTransitioning] = useState(false);
+    
     const limits = PLAN_LIMITS[plan];
     const isPro = plan === 'pro' || plan === 'lifetime';
+    const canSearch = isPro || dailySearchesUsed < limits.dailySearches;
 
-    // ── Load persisted state on mount ─────────────────────────────────────
+    const planRef = useRef<Plan>(plan);
+
     useEffect(() => {
         const loadState = async () => {
             try {
@@ -102,9 +98,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
                     AsyncStorage.getItem(STORAGE_KEYS.searchDate),
                 ]);
 
-                if (storedPlan) setPlanState(storedPlan as Plan);
+                if (storedPlan) {
+                    setPlanState(storedPlan as Plan);
+                    planRef.current = storedPlan as Plan;
+                }
 
-                // Reset daily count if it's a new day
                 const today = new Date().toDateString();
                 if (storedDate === today && storedCount) {
                     setDailySearchesUsed(parseInt(storedCount, 10));
@@ -115,20 +113,110 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
                         [STORAGE_KEYS.searchDate, today],
                     ]);
                 }
+
+                const { data: { session } } = await (await import('../lib/supabase')).supabase.auth.getSession();
+                const latestPlan = await checkProEntitlement(session?.user?.id);
+                console.log('[Subscription] Initial check result:', latestPlan);
+                if (latestPlan !== (storedPlan as Plan)) {
+                    await setPlan(latestPlan);
+                }
             } catch (e) {
                 console.error('[Subscription] Error loading state', e);
             }
         };
         loadState();
+
+        const syncAuth = async () => {
+            const { supabase } = await import('../lib/supabase');
+            const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+                if (session?.user?.id) {
+                    const { initializePurchases } = await import('../lib/purchases');
+                    await initializePurchases(session.user.id);
+                    const latestPlan = await checkProEntitlement(session.user.id);
+                    console.log('[Subscription] Auth change check:', latestPlan);
+                    await setPlan(latestPlan);
+                } else if (event === 'SIGNED_OUT') {
+                    await setPlan('free');
+                }
+            });
+            return subscription;
+        };
+        const authSubPromise = syncAuth();
+
+        let cleanupRCListener: (() => void) | undefined;
+        
+        const setupListener = async () => {
+            if (Platform.OS === 'android' || Platform.OS === 'ios') {
+                try {
+                    const Purchases = (await import('react-native-purchases')).default;
+                    const removeListener = Purchases.addCustomerInfoUpdateListener(async (info) => {
+                        const ENTITLEMENT_ID = 'pro_access';
+                        const entitlement = info.entitlements.active[ENTITLEMENT_ID];
+                        let newPlan: Plan = 'free';
+                        if (entitlement) {
+                            newPlan = entitlement.productIdentifier.includes('lifetime') ? 'lifetime' : 'pro';
+                        }
+                        console.log('[Subscription] RC Update:', newPlan);
+                        await setPlan(newPlan);
+                    });
+
+                    if (typeof removeListener === 'function') {
+                        cleanupRCListener = removeListener;
+                    } else if (removeListener && typeof (removeListener as any).remove === 'function') {
+                        cleanupRCListener = () => (removeListener as any).remove();
+                    }
+                } catch (e) {
+                    console.log('[Subscription] RC listener error', e);
+                }
+            }
+        };
+        setupListener();
+
+        const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+            if (nextAppState === 'active') {
+                const { supabase } = await import('../lib/supabase');
+                const { data: { session } } = await supabase.auth.getSession();
+                const latestPlan = await checkProEntitlement(session?.user?.id);
+                console.log('[Subscription] App active refresh:', latestPlan);
+                await setPlan(latestPlan);
+            }
+        };
+
+        const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+
+        return () => {
+            if (cleanupRCListener) cleanupRCListener();
+            appStateSubscription.remove();
+            authSubPromise.then(sub => sub.unsubscribe());
+        };
     }, []);
 
-    // ── Computed ──────────────────────────────────────────────────────────
-    const canSearch =
-        isPro ||
-        limits.dailySearches === -1 ||
-        dailySearchesUsed < limits.dailySearches;
+    useEffect(() => {
+        // If we are showing the paywall and the user suddenly becomes Pro
+        if (plan !== 'free' && paywallVisible && !isTransitioning) {
+            console.log(`[Subscription] Upgrade detected (${plan})! Starting transition.`);
+            setIsTransitioning(true);
+            
+            // 1. Close the paywall immediately
+            setPaywallVisible(false);
+            setPaywallReason('');
+        }
+    }, [plan, paywallVisible, isTransitioning]);
 
-    // ── Actions ───────────────────────────────────────────────────────────
+    useEffect(() => {
+        // Trigger success modal ONLY after paywall is confirmed closed
+        // We use a slightly longer delay and check that paywall is definitely false
+        if (isTransitioning && !paywallVisible) {
+            const timer = setTimeout(() => {
+                console.log('[Subscription] Transition complete. Showing welcome modal.');
+                setSuccessModalVisible(true);
+                setIsTransitioning(false);
+            }, 1500); // Increased to 1500ms to be absolutely safe
+
+            return () => clearTimeout(timer);
+        }
+    }, [isTransitioning, paywallVisible]);
+
     const incrementSearchCount = async () => {
         if (isPro) return;
         const next = dailySearchesUsed + 1;
@@ -150,9 +238,15 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     };
 
     const setPlan = async (newPlan: Plan) => {
+        if (newPlan === planRef.current) return;
+        console.log(`[Subscription] Plan transition: ${planRef.current} -> ${newPlan}`);
         setPlanState(newPlan);
+        planRef.current = newPlan;
         await AsyncStorage.setItem(STORAGE_KEYS.plan, newPlan);
     };
+
+    const showSuccess = () => setSuccessModalVisible(true);
+    const hideSuccess = () => setSuccessModalVisible(false);
 
     const canUseFeature = (feature: keyof PlanLimits): boolean => {
         const val = limits[feature];
@@ -162,8 +256,16 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     };
 
     const restorePurchases = async () => {
-        // TODO: integrate RevenueCat restore here
-        console.log('[Subscription] restorePurchases — RevenueCat integration pending');
+        try {
+            const result = await rcRestorePurchases();
+            if (result.success && result.plan) {
+                await setPlan(result.plan);
+            }
+            return result;
+        } catch (e) {
+            console.error('[Subscription] Restore error', e);
+            return { success: false, error: 'Failed to restore purchases' };
+        }
     };
 
     return (
@@ -181,13 +283,14 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
             canUseFeature,
             setPlan,
             restorePurchases,
+            successModalVisible,
+            showSuccess,
+            hideSuccess,
         }}>
             {children}
         </SubscriptionContext.Provider>
     );
 }
-
-// ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useSubscription() {
     const ctx = useContext(SubscriptionContext);

@@ -75,6 +75,13 @@ interface StoreState {
     setSelectModal: React.Dispatch<React.SetStateAction<any>>;
     openSelector: (title: string, items: any[], onSelect: (val: any) => void, renderLabel: (val: any) => string) => void;
 
+    // Tour State
+    isTourActive: boolean;
+    setIsTourActive: React.Dispatch<React.SetStateAction<boolean>>;
+    tourStep: number;
+    setTourStep: React.Dispatch<React.SetStateAction<number>>;
+    startTour: () => void;
+
     // Util functions
     formatPrice: (amount: number) => string;
     getEstMultiplier: (p: any) => number;
@@ -115,6 +122,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const [targetPlayers, setTargetPlayers] = useState<any[]>([]);
     const [activeTab, setActiveTab] = useState('scout');
     const [savedFilters, setSavedFilters] = useState<any[]>([]);
+
+    // Tour State
+    const [isTourActive, setIsTourActive] = useState(false);
+    const [tourStep, setTourStep] = useState(0);
+
+    const startTour = () => {
+        setTourStep(0);
+        setIsTourActive(true);
+    };
 
     // Globals Modals & Options
     const [nationalities, setNationalities] = useState<string[]>([]);
@@ -196,6 +212,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             clubs, setClubs,
             selectModal, setSelectModal,
             openSelector,
+            isTourActive, setIsTourActive,
+            tourStep, setTourStep,
+            startTour,
             formatPrice,
             getEstMultiplier,
             getBlockEstimate

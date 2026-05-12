@@ -246,11 +246,15 @@ export default function SmartScreen() {
         </View>
     );
 
+    // Track upsell view if not pro
+    React.useEffect(() => {
+        if (!isPro) {
+            Analytics.trackUpsellView('smart');
+        }
+    }, [isPro]);
+
     // ── PRO gate: render upsell screen for free users ────────────────────
     if (!isPro) {
-        React.useEffect(() => {
-            Analytics.trackUpsellView('smart');
-        }, []);
 
         return (
             <ScrollView

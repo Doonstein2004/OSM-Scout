@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, Platform, AppState, AppStateStatus } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Purchases from 'react-native-purchases';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import { useSubscription } from '../context/SubscriptionContext';
-import { purchaseMonthly, purchaseLifetime, restorePurchases } from '../lib/purchases';
+import { purchaseMonthly, purchaseLifetime, checkProEntitlement } from '../lib/purchases';
+import { getOrCreateUserId } from '../lib/supabase';
 import { Analytics } from '../lib/analytics';
+import * as Linking from 'expo-linking';
 
 interface Feature {
     icon: string;
@@ -23,37 +27,126 @@ const FEATURE_KEYS: Feature[] = [
     { icon: '🚫', labelKey: 'feat_no_ads',             free: false },
 ];
 
+function DebugInfo() {
+    const [uid, setUid] = useState<string | null>(null);
+    useEffect(() => {
+        getOrCreateUserId().then(setUid);
+    }, []);
+    return <Text className="text-[9px] text-emerald-500/70 font-mono text-center">ID: {uid || 'Cargando...'}</Text>;
+}
+
 export default function PaywallModal() {
     const { t } = useTranslation();
-    const { paywallVisible, paywallReason, hidePaywall, setPlan } = useSubscription();
+    const { 
+        paywallVisible, 
+        paywallReason, 
+        hidePaywall, 
+        setPlan, 
+        showSuccess 
+    } = useSubscription();
+    
+    const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'lifetime'>('monthly');
     const [loading, setLoading] = useState(false);
-    const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'lifetime'>('lifetime');
+    const [isRedirected, setIsRedirected] = useState(false);
 
     useEffect(() => {
         if (paywallVisible) {
             Analytics.trackPaywallView(paywallReason || 'general');
+            getOrCreateUserId().then(id => {
+                console.log('[Paywall] Modal opened. User ID:', id);
+            });
+        } else {
+            setIsRedirected(false);
         }
     }, [paywallVisible, paywallReason]);
 
+    const checkStatus = React.useCallback(async () => {
+        try {
+            const userId = await getOrCreateUserId();
+            if (!userId) return false;
+
+            const latestPlan = await checkProEntitlement(userId);
+            if (latestPlan !== 'free') {
+                // SubscriptionContext will see this change and close the paywall + show success
+                setPlan(latestPlan);
+                return true;
+            }
+        } catch (e) {
+            console.error('[Paywall] Polling error:', e);
+        }
+        return false;
+    }, [setPlan]);
+
+    // Polling and AppState logic for state synchronization
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+
+        if (isRedirected && paywallVisible) {
+            // Check status every 2 seconds while redirected and modal is visible
+            interval = setInterval(checkStatus, 2000);
+        }
+
+        // Listener nativo: AppState (Android/iOS)
+        const handleAppStateChange = (nextAppState: AppStateStatus) => {
+            if (nextAppState === 'active' && isRedirected && paywallVisible) {
+                console.log('[Paywall] App returned to foreground (native), checking status...');
+                // Pequeño delay para dar tiempo a Stripe/RC de procesar el webhook
+                setTimeout(checkStatus, 1500);
+            }
+        };
+        const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+        // Listener web: visibilitychange (el usuario vuelve de la pestaña de Stripe)
+        let handleVisibilityChange: (() => void) | undefined;
+        if (Platform.OS === 'web' && typeof document !== 'undefined') {
+            handleVisibilityChange = () => {
+                if (document.visibilityState === 'visible' && isRedirected && paywallVisible) {
+                    console.log('[Paywall] Tab became visible (web), checking status...');
+                    setTimeout(checkStatus, 1000);
+                }
+            };
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+        }
+
+        return () => {
+            if (interval) clearInterval(interval);
+            subscription.remove();
+            if (handleVisibilityChange) {
+                document.removeEventListener('visibilitychange', handleVisibilityChange);
+            }
+        };
+    }, [isRedirected, paywallVisible, checkStatus]);
+
     const handleSubscribe = async () => {
         Analytics.trackPlanSelection(selectedPlan, paywallReason || 'general');
-        if (__DEV__) {
-            setPlan(selectedPlan === 'lifetime' ? 'lifetime' : 'pro');
-            hidePaywall();
-            return;
-        }
         setLoading(true);
         try {
+            const userId = await getOrCreateUserId();
+
             const result = selectedPlan === 'lifetime'
-                ? await purchaseLifetime()
-                : await purchaseMonthly();
+                ? await purchaseLifetime(userId)
+                : await purchaseMonthly(userId);
+
             if (result.success && result.plan) {
                 Analytics.trackPurchaseSuccess(result.plan);
                 setPlan(result.plan);
-                hidePaywall();
+                // hidePaywall() and showSuccess() handled by context effect
+            } else if (result.isRedirecting && result.url) {
+                // On Web, we are redirecting to Stripe Checkout
+                setIsRedirected(true);
+                console.log('[Paywall] Redirecting to external checkout:', result.url);
+                
+                if (Platform.OS === 'web') {
+                    // Use direct redirection to avoid popup blockers and "unsafe attempt" errors
+                    window.location.href = result.url;
+                } else {
+                    // Use Linking.openURL for native
+                    Linking.openURL(result.url);
+                }
             } else if (result.error !== 'cancelled') {
                 Alert.alert(t('error_purchase_title'), result.error ?? t('error_generic'));
             }
+
         } finally {
             setLoading(false);
         }
@@ -77,6 +170,32 @@ export default function PaywallModal() {
 
     const handleDonate = () => {
         Alert.alert(t('donate_title'), t('donate_soon_message'));
+    };
+
+    const handleDebugReset = async () => {
+        try {
+            setLoading(true);
+            // Clear everything for a clean test
+            await AsyncStorage.multiRemove(['user_entitlements', 'supabase.auth.token', 'sb-access-token', 'sb-refresh-token']);
+            
+            // Force a logout in Purchases if possible
+            try { await Purchases.logOut(); } catch(e) {}
+            
+            setPlan('free');
+            
+            // Force a reload to get a new anonymous ID and clear state
+            if (Platform.OS === 'web') {
+                window.location.reload();
+            } else {
+                Alert.alert('Reset Complete', 'App state cleared. Please restart the app to get a new identity.', [
+                    { text: 'OK', onPress: hidePaywall }
+                ]);
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -189,6 +308,18 @@ export default function PaywallModal() {
                             ))}
                         </View>
 
+                        {/* ── Debug Reset Button ────────────────────────── */}
+                        {__DEV__ && (
+                            <TouchableOpacity
+                                onPress={handleDebugReset}
+                                disabled={loading}
+                                className="mx-5 mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-2xl items-center shadow-lg shadow-red-500/20"
+                            >
+                                <Text className="text-red-500 font-bold text-lg">⚠️ DEBUG: VOLVER A FREE</Text>
+                                <Text className="text-red-400/60 text-[10px] mt-1 text-center">Limpia caché de Supabase, RevenueCat y reinicia identidad</Text>
+                            </TouchableOpacity>
+                        )}
+
                         {/* ── Plan selector (side by side) ──────────────── */}
                         <View className="mx-5 mb-4">
                             <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3 text-center">
@@ -250,26 +381,40 @@ export default function PaywallModal() {
                             </View>
                         </View>
 
-                        {/* ── CTA Button ────────────────────────────────── */}
+                        {/* ── Redirection / CTA ──────────────── */}
                         <View className="mx-5 mb-3">
-                            <TouchableOpacity onPress={handleSubscribe} disabled={loading} activeOpacity={0.85}>
-                                <View className={`h-14 rounded-3xl items-center justify-center shadow-xl ${
-                                    loading ? 'opacity-60' : ''
-                                } ${
-                                    selectedPlan === 'lifetime'
-                                        ? 'bg-amber-500 shadow-amber-500/30'
-                                        : 'bg-emerald-500 shadow-emerald-500/30'
-                                }`}>
-                                    <Text className="text-black font-black text-sm tracking-widest uppercase">
-                                        {loading
-                                            ? t('cta_processing')
-                                            : selectedPlan === 'lifetime'
-                                                ? t('cta_lifetime')
-                                                : t('cta_monthly')
-                                        }
-                                    </Text>
+                            {isRedirected ? (
+                                <View className="bg-slate-800/50 border border-slate-700 rounded-3xl p-8 items-center gap-5">
+                                    <View className="w-12 h-12 rounded-full border-4 border-emerald-500/20 border-t-emerald-500 animate-spin" />
+                                    <View className="items-center">
+                                        <Text className="text-white font-black text-lg text-center leading-tight mb-1">{t('paywall_processing_title')}</Text>
+                                        <Text className="text-slate-400 text-xs text-center px-4 leading-relaxed">{t('paywall_processing_desc')}</Text>
+                                    </View>
+                                    
+                                    <TouchableOpacity onPress={() => setIsRedirected(false)}>
+                                        <Text className="text-slate-500 text-[10px] uppercase font-black tracking-widest">{t('paywall_cancel_wait') || 'Volver al selector'}</Text>
+                                    </TouchableOpacity>
                                 </View>
-                            </TouchableOpacity>
+                            ) : (
+                                <TouchableOpacity onPress={handleSubscribe} disabled={loading} activeOpacity={0.85}>
+                                    <View className={`h-14 rounded-3xl items-center justify-center shadow-xl ${
+                                        loading ? 'opacity-60' : ''
+                                    } ${
+                                        selectedPlan === 'lifetime'
+                                            ? 'bg-amber-500 shadow-amber-500/30'
+                                            : 'bg-emerald-500 shadow-emerald-500/30'
+                                    }`}>
+                                        <Text className="text-black font-black text-sm tracking-widest uppercase">
+                                            {loading
+                                                ? t('cta_processing')
+                                                : selectedPlan === 'lifetime'
+                                                    ? t('cta_lifetime')
+                                                    : t('cta_monthly')
+                                            }
+                                        </Text>
+                                    </View>
+                                </TouchableOpacity>
+                            )}
                         </View>
 
                         {/* ── Donate ────────────────────────────────────── */}
@@ -286,6 +431,13 @@ export default function PaywallModal() {
 
                         {/* ── Footer ────────────────────────────────────── */}
                         <View className="items-center mt-4 px-6 gap-2">
+                            {__DEV__ && (
+                                <View className="mb-2 p-2 bg-slate-800/50 rounded-lg border border-slate-700 w-full">
+                                    <Text className="text-[9px] text-slate-500 font-mono text-center uppercase mb-1">Diagnóstico</Text>
+                                    <DebugInfo />
+                                    <Text className="text-[9px] text-slate-500 font-mono text-center mt-1">Plataforma: {Platform.OS}</Text>
+                                </View>
+                            )}
                             <TouchableOpacity onPress={handleRestore} disabled={loading}>
                                 <Text className="text-slate-500 text-[11px] underline">
                                     {loading ? t('cta_processing') : t('restore_purchases')}
@@ -297,6 +449,18 @@ export default function PaywallModal() {
                             <Text className="text-slate-700 text-[10px] text-center leading-relaxed px-4 mt-1">
                                 {t('paywall_legal')}
                             </Text>
+
+                            {__DEV__ && (
+                                <TouchableOpacity 
+                                    onPress={async () => {
+                                        await setPlan('free');
+                                        Alert.alert('DEBUG', 'Status reset to FREE for testing.');
+                                    }}
+                                    style={{ marginTop: 20, padding: 10, backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)' }}
+                                >
+                                    <Text style={{ color: '#ef4444', fontSize: 10, fontWeight: '900' }}>DEBUG: RESET TO FREE</Text>
+                                </TouchableOpacity>
+                            )}
                         </View>
 
                     </ScrollView>

@@ -13,11 +13,10 @@ import { useInitializeData } from '../hooks/useInitializeData';
 import { useServiceWorker } from '../hooks/useServiceWorker';
 import { SubscriptionProvider } from '../context/SubscriptionContext';
 import PaywallModal from '../components/PaywallModal';
-import { View } from 'react-native';
+import SuccessModal from '../components/SuccessModal';
+import { Platform, View } from 'react-native';
 import { initializePurchases } from '../lib/purchases';
 import '../global.css';
-
-inject({ mode: 'production' });
 
 export const metadata = {
   title: 'OSM Scout Pro | Football Scout Manager',
@@ -42,7 +41,12 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   useInitializeData();
 
   useEffect(() => {
-    initializePurchases();
+    const init = async () => {
+      const { getOrCreateUserId } = await import('../lib/supabase');
+      const userId = await getOrCreateUserId();
+      await initializePurchases(userId);
+    };
+    init();
   }, []);
 
   return <>{children}</>;
@@ -51,6 +55,12 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   useServiceWorker();
   
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      inject({ mode: 'production' });
+    }
+  }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000000' }}>
       <View style={{ 
@@ -76,6 +86,7 @@ export default function RootLayout() {
                 <HeroUINativeProvider>
                   <GlobalSelector />
                   <PaywallModal />
+                  <SuccessModal />
                   <Stack screenOptions={{ headerShown: false }}>
                     <Stack.Screen name="(tabs)" />
                   </Stack>
