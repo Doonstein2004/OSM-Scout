@@ -114,6 +114,7 @@ def login_to_osm(page: Page, osm_username: str, osm_password: str, max_retries: 
             # networkidle es muy lento en OSM, usamos domcontentloaded y un timeout más alto
             page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=90000)
             
+            form_submitted = False
             for check in range(30):
                 handle_popups(page)
                 current_url = page.url
@@ -141,24 +142,41 @@ def login_to_osm(page: Page, osm_username: str, osm_password: str, max_retries: 
                     username_input = page.locator("input#manager-name")
                     password_input = page.locator("input#password")
                     
-                    if username_input.is_visible(timeout=5000):
-                        print(f"    📝 Rellenando formulario para {osm_username}...")
-                        username_input.fill(osm_username)
-                        password_input.fill(osm_password)
-                        page.locator("button#login").click() # Cambiado de Enter a Clic directo
-                        time.sleep(8)
-                        
-                        try:
-                            page.wait_for_function("() => window.location.href.includes('Career') || window.location.href.includes('ChooseLeague') || document.querySelector('.feedback-message') !== null", timeout=15000)
-                            error_msg = page.locator(".feedbackcontainer .feedback-message")
-                            if error_msg.is_visible(timeout=2000):
-                                print(f"    ❌ Error de OSM: {error_msg.inner_text()}")
-                                raise InvalidCredentialsError(f"OSM: {error_msg.inner_text()}")
-                        except PlaywrightTimeoutError: 
-                            print("    ⏳ Espera terminada, revisando URL de nuevo...")
-                            pass
+                    if not form_submitted:
+                        if username_input.is_visible(timeout=5000):
+                            print(f"    📝 Rellenando formulario para {osm_username}...")
+                            username_input.fill(osm_username)
+                            password_input.fill(osm_password)
+                            page.locator("button#login").click() # Clic directo
+                            form_submitted = True
+                            
+                            try:
+                                page.wait_for_function(
+                                    "() => window.location.href.includes('Career') || "
+                                    "window.location.href.includes('ChooseLeague') || "
+                                    "(document.querySelector('.feedbackcontainer') && "
+                                    "document.querySelector('.feedbackcontainer').style.display !== 'none' && "
+                                    "document.querySelector('.feedback-message') && "
+                                    "document.querySelector('.feedback-message').innerText.trim() !== '')",
+                                    timeout=20000
+                                )
+                                print("    ⏳ Espera tras submit finalizada.")
+                            except PlaywrightTimeoutError: 
+                                print("    ⏳ Timeout esperando redirección o mensaje de error...")
+                                pass
+                        else:
+                            print("    ⌛ Esperando a que el formulario sea visible...")
                     else:
-                        print("    ⌛ Esperando a que el formulario sea visible...")
+                        # Si ya se envió el formulario, verificar si el contenedor de error se volvió visible
+                        error_container = page.locator(".feedbackcontainer")
+                        if error_container.is_visible(timeout=1000):
+                            error_msg = page.locator(".feedbackcontainer .feedback-message")
+                            msg_text = error_msg.inner_text().strip()
+                            if msg_text:
+                                print(f"    ❌ Error de OSM: {msg_text}")
+                                raise InvalidCredentialsError(f"OSM: {msg_text}")
+                        else:
+                            print("    ⏳ Esperando respuesta de login...")
                 
                 time.sleep(2)
         except InvalidCredentialsError as e: raise e
