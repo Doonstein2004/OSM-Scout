@@ -8,6 +8,7 @@ import { StoreProvider } from '../context/StoreContext';
 import { HeroUINativeProvider } from 'heroui-native';
 import { GlobalSelector } from '../components/GlobalSelector';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useInitializeData } from '../hooks/useInitializeData';
 import { useServiceWorker } from '../hooks/useServiceWorker';
 import { View } from 'react-native';
@@ -44,7 +45,8 @@ export default function RootLayout() {
   
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000000' }}>
-      <View style={{ 
+      <SafeAreaProvider>
+      <View style={{
         flex: 1, 
         width: '100%', 
         maxWidth: 500, 
@@ -73,6 +75,7 @@ export default function RootLayout() {
           </StoreProvider>
         </ErrorBoundary>
       </View>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

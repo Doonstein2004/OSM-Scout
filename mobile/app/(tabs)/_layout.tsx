@@ -3,12 +3,13 @@ import { Tabs } from 'expo-router';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../lib/i18n';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../context/StoreContext';
 
 export default function TabLayout() {
   const { t } = useTranslation();
   const { targetPlayers } = useStore();
+  const insets = useSafeAreaInsets();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#020617' }} edges={['top']}>
@@ -40,8 +41,8 @@ export default function TabLayout() {
             backgroundColor: '#020617',
             borderTopWidth: 1,
             borderTopColor: 'rgba(255,255,255,0.05)',
-            height: 70,
-            paddingBottom: 10,
+            height: 70 + insets.bottom,
+            paddingBottom: 10 + insets.bottom,
             paddingTop: 10,
           },
           tabBarActiveTintColor: '#10b981',
