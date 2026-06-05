@@ -11,10 +11,12 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useInitializeData } from '../hooks/useInitializeData';
 import { useServiceWorker } from '../hooks/useServiceWorker';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import '../global.css';
 
-inject({ mode: 'production' });
+if (Platform.OS === 'web') {
+  inject({ mode: 'production' });
+}
 
 export const metadata = {
   title: 'OSM Scout Pro | Football Scout Manager',
