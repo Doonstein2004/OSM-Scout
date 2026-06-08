@@ -138,11 +138,12 @@ nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
         setLoading(true);
         try {
             const PLAYER_FIELDS = 'id,name,age,overall,attack,defense,position,detailed_position,nationality,value_amount,value_str,club_id';
-            const CLUB_FIELDS = 'id,name,league_id,league:leagues(id,name)';
-            
+            const CLUB_FIELDS = 'id,name,league_id,is_world_cup,league:leagues(id,name)';
+
             let query = supabase
                 .from('players')
                 .select(`*, club:clubs!inner(${CLUB_FIELDS})`, { count: 'exact' })
+                .eq('club.is_world_cup', false)
                 .limit(PAGE_SIZE);
 
             // Multiple Positions

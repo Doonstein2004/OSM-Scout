@@ -81,7 +81,7 @@ def get_supabase_client():
         print(f"❌ Error al crear cliente Supabase: {e}")
         return None
 
-def sync_to_supabase(data):
+def sync_to_supabase(data, is_world_cup=False):
     """
     Sincronización Atómica con tracking de cambios (Diff):
     1. Obtiene estado actual de los jugadores del club.
@@ -103,6 +103,7 @@ def sync_to_supabase(data):
             league_payload = {
                 "name": league["league_name"],
                 "country": league.get("country"),
+                "is_world_cup": is_world_cup,
                 "updated_at": now
             }
             @retry_supabase_call
@@ -127,6 +128,7 @@ def sync_to_supabase(data):
                     "objective": int(re.sub(r'\D', '', str(club["objective"]))) if any(c.isdigit() for c in str(club["objective"])) else None,
                     "squad_value": parse_value_string(club["squad_value"]),
                     "fixed_income": parse_value_string(club.get("fixed_income", "0")),
+                    "is_world_cup": is_world_cup,
                     "updated_at": now
                 }
                 

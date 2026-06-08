@@ -99,6 +99,14 @@ export default function TabLayout() {
             tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>⚽</Text>,
           }}
         />
+        <Tabs.Screen
+          name="mundial"
+          options={{
+            title: 'MUNDIAL',
+            tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>🌍</Text>,
+            tabBarActiveTintColor: '#f59e0b',
+          }}
+        />
       </Tabs>
     </SafeAreaView>
   );

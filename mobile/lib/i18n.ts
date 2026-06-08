@@ -142,7 +142,24 @@ const resources = {
       "fantasy_formation_custom": "Custom",
       "fantasy_wingbacks": "Use Wingbacks (Carrileros)",
       "fantasy_pos_dist": "Position Distribution",
-      "fantasy_total_pos": "Total Allocated"
+      "fantasy_total_pos": "Total Allocated",
+      "mundial": "World Cup",
+      "wc_subtitle": "USA, Canada & Mexico · 48 teams",
+      "wc_group": "Group",
+      "wc_avg_ovr": "Avg OVR",
+      "wc_avg_age": "Avg Age",
+      "wc_squad_value": "Value",
+      "wc_star": "Star",
+      "wc_back": "← Back",
+      "wc_roster": "Squad",
+      "wc_no_data": "No World Cup data",
+      "wc_no_data_desc": "Run the scraper to load World Cup 2026 squads",
+      "wc_search": "Search national team...",
+      "wc_group_ranking": "Group Ranking",
+      "wc_top_team": "Group Leader",
+      "wc_players": "players",
+      "wc_view_squad": "View squad →",
+      "wc_loading": "Loading squads..."
     }
   },
   es: {
@@ -285,7 +302,24 @@ const resources = {
       "fantasy_formation_custom": "Personalizado",
       "fantasy_wingbacks": "Usar Carrileros (CI/CD)",
       "fantasy_pos_dist": "Distribución de Posiciones",
-      "fantasy_total_pos": "Total Asignado"
+      "fantasy_total_pos": "Total Asignado",
+      "mundial": "Mundial",
+      "wc_subtitle": "EE.UU., Canadá & México · 48 selecciones",
+      "wc_group": "Grupo",
+      "wc_avg_ovr": "Media OVR",
+      "wc_avg_age": "Edad Media",
+      "wc_squad_value": "Valor",
+      "wc_star": "Estrella",
+      "wc_back": "← Volver",
+      "wc_roster": "Plantilla",
+      "wc_no_data": "Sin datos del Mundial",
+      "wc_no_data_desc": "Ejecuta el scraper para cargar las plantillas del World Cup 2026",
+      "wc_search": "Buscar selección...",
+      "wc_group_ranking": "Ranking del Grupo",
+      "wc_top_team": "Líder del Grupo",
+      "wc_players": "jugadores",
+      "wc_view_squad": "Ver plantilla →",
+      "wc_loading": "Cargando selecciones..."
     }
   },
   pt: {
@@ -429,7 +463,24 @@ const resources = {
       "fantasy_formation_custom": "Personalizado",
       "fantasy_wingbacks": "Usar Carrileiros (CI/CD)",
       "fantasy_pos_dist": "Distribuição de Posições",
-      "fantasy_total_pos": "Total Alocado"
+      "fantasy_total_pos": "Total Alocado",
+      "mundial": "Mundial",
+      "wc_subtitle": "EUA, Canadá & México · 48 seleções",
+      "wc_group": "Grupo",
+      "wc_avg_ovr": "Média OVR",
+      "wc_avg_age": "Idade Média",
+      "wc_squad_value": "Valor",
+      "wc_star": "Estrela",
+      "wc_back": "← Voltar",
+      "wc_roster": "Plantel",
+      "wc_no_data": "Sem dados da Copa",
+      "wc_no_data_desc": "Execute o scraper para carregar os plantéis da Copa do Mundo 2026",
+      "wc_search": "Buscar seleção...",
+      "wc_group_ranking": "Classificação do Grupo",
+      "wc_top_team": "Líder do Grupo",
+      "wc_players": "jogadores",
+      "wc_view_squad": "Ver plantel →",
+      "wc_loading": "Carregando seleções..."
     }
   }
 

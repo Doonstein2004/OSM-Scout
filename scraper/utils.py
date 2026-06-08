@@ -10,6 +10,23 @@ logger = logging.getLogger(__name__)
 class InvalidCredentialsError(Exception):
     pass
 
+class BrowserCrashError(Exception):
+    """Raised when the Playwright browser process crashes or disconnects."""
+    pass
+
+_CRASH_PHRASES = [
+    "Connection closed while reading from the driver",
+    "Target closed",
+    "Browser has been closed",
+    "Pipe closed",
+    "browser has been disconnected",
+    "Protocol error",
+    "Session closed",
+]
+
+def is_browser_crash(err_str: str) -> bool:
+    return any(phrase in err_str for phrase in _CRASH_PHRASES)
+
 def handle_popups(page: Page):
     """
     Versión v4.2: Cierra modales agresivos, incluyendo el aviso de Password Login (que es un div, no un button).
@@ -77,27 +94,28 @@ def safe_navigate(page: Page, url: str, verify_selector: str = None, max_retries
     for attempt in range(max_retries):
         try:
             logger.debug(f"  🌐 Navegando a {url} (Intento {attempt + 1}/{max_retries})...")
-            # Usamos 'domcontentloaded' por defecto ya que OSM es pesado
             page.goto(url, wait_until='domcontentloaded', timeout=45000)
-            
+
             if verify_selector:
                 page.wait_for_selector(verify_selector, timeout=15000)
-            
+
             return True
         except Exception as e:
             error_str = str(e)
+
+            # Browser crash → raise immediately, no point retrying
+            if is_browser_crash(error_str):
+                logger.error(f"  💀 Browser crash en navegación: {error_str[:120]}")
+                raise BrowserCrashError(error_str)
+
             is_conn_error = "10060" in error_str or "ECONNRESET" in error_str or "ETIMEDOUT" in error_str
-            
             wait_time = 10 if is_conn_error else 2
             logger.warning(f"  ⚠️ Error de navegación ({attempt + 1}/{max_retries}): {error_str}")
-            
+
             if attempt < max_retries - 1:
                 if is_conn_error:
                     logger.info(f"  🔌 Error de conexión detectado. Esperando {wait_time}s antes de reintentar...")
-                
                 time.sleep(wait_time)
-                
-                # Si estamos en la URL correcta pero falló algo, intentar recargar
                 if page.url == url:
                     try: page.reload(wait_until='domcontentloaded', timeout=30000)
                     except: pass

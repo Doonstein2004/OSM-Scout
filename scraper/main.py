@@ -5,7 +5,7 @@ import time
 import logging
 from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError
-from utils import login_to_osm, handle_popups, safe_navigate
+from utils import login_to_osm, handle_popups, safe_navigate, BrowserCrashError, is_browser_crash
 from supabase_sync import sync_to_supabase
 import dotenv
 
@@ -55,7 +55,7 @@ def is_special_league(league_name):
 
 
 # Configuración para empezar desde una liga específica (poner None para empezar desde el principio)
-START_FROM = None
+START_FROM = "Malta"
 
 def parse_value_string(value_str):
     if not isinstance(value_str, str): return 0, "N/A"
@@ -281,10 +281,15 @@ def scrape_osm(username, password):
                             page.wait_for_selector("table#leaguetypes-table", timeout=15000)
                             break # Exito!
                         except Exception as e:
+                            error_str = str(e)
+                            # Browser crash → surface immediately, no recovery possible
+                            if is_browser_crash(error_str):
+                                raise BrowserCrashError(error_str)
+
                             logger.error(f"    ❌ Error en club {j} (Intento {attempt+1}): {e}")
                             if attempt == max_retries - 1:
                                 logger.error(f"    ‼️ Fallo definitivo en {club_name}")
-                            
+
                             handle_popups(page)
                             logger.info(f"    🔄 Intentando recuperar navegando a: {league_url}")
                             if not safe_navigate(page, league_url, "table#leaguetypes-table"):
@@ -298,6 +303,27 @@ def scrape_osm(username, password):
                 if not safe_navigate(page, "https://en.onlinesoccermanager.com/LeagueTypes", "table#leaguetypes-table"):
                     logger.warning("    ⚠️ No se pudo volver a la lista de ligas normalmente.")
 
+            except BrowserCrashError as crash_err:
+                logger.error(f"💀 Browser crash en liga {i}. Reiniciando browser...")
+                try:
+                    browser.close()
+                except Exception:
+                    pass
+                try:
+                    browser = p.chromium.launch(headless=True)
+                    context = browser.new_context()
+                    page = context.new_page()
+                    logger.info("🔄 Nuevo browser iniciado. Re-autenticando...")
+                    if not login_to_osm(page, username, password):
+                        logger.error("❌ Re-login fallido tras crash. Abortando scrape.")
+                        break
+                    if not safe_navigate(page, "https://en.onlinesoccermanager.com/LeagueTypes", "table#leaguetypes-table"):
+                        logger.error("❌ No se pudo recargar lista de ligas. Abortando.")
+                        break
+                    logger.info(f"✅ Browser reiniciado. Retomando desde liga {i+1}...")
+                except Exception as restart_err:
+                    logger.error(f"💥 Fallo fatal al reiniciar browser: {restart_err}. Abortando.")
+                    break
             except Exception as e:
                 logger.error(f"💥 Error grave en liga {i}: {e}")
                 logger.info("    ⏳ Esperando 15s para estabilizar conexión...")
@@ -307,12 +333,161 @@ def scrape_osm(username, password):
         # Final save
         with open("osm_data.json", "w", encoding="utf-8") as f:
             json.dump(leagues_data_final, f, indent=4, ensure_ascii=False)
-        
+
+        scrape_world_cup(page)
         logger.info("✨ Scrape completado.")
         browser.close()
 
+def scrape_world_cup(page):
+    """Scrape específico para World 2026, aislado del ojeador normal."""
+    WORLD_CUP_NAME = "World 2026"
+    logger.info(f"\n🌍 Iniciando scrape del {WORLD_CUP_NAME}...")
+
+    if not safe_navigate(page, "https://en.onlinesoccermanager.com/LeagueTypes", "table#leaguetypes-table"):
+        logger.error("❌ No se pudo cargar la lista de ligas para el Mundial.")
+        return
+
+    league_rows = page.locator("table#leaguetypes-table tbody tr.clickable")
+    num_leagues = league_rows.count()
+    world_cup_row = None
+
+    for i in range(num_leagues):
+        row = page.locator("table#leaguetypes-table tbody tr.clickable").nth(i)
+        name = row.locator("td span.semi-bold").inner_text().strip()
+        if name == WORLD_CUP_NAME:
+            world_cup_row = row
+            logger.info(f"✅ Encontrado: {WORLD_CUP_NAME}")
+            break
+
+    if not world_cup_row:
+        logger.error(f"❌ No se encontró '{WORLD_CUP_NAME}' en la lista de ligas.")
+        return
+
+    world_cup_row.click()
+    page.wait_for_selector("table#leaguetypes-table thead th", timeout=30000)
+    league_url = page.url
+
+    # Detect column positions dynamically (same as regular scraper)
+    header_map = {"club": 0, "obj": 1, "val": 2, "inc": 3}
+    headers = page.locator("table#leaguetypes-table thead th")
+    for h in range(headers.count()):
+        txt = headers.nth(h).inner_text().lower().strip()
+        if "club" in txt or "team" in txt or "name" in txt:
+            header_map["club"] = h
+        elif "obj" in txt or "goal" in txt:
+            header_map["obj"] = h
+        elif "val" in txt:
+            header_map["val"] = h
+        elif "inc" in txt or "funds" in txt or "budget" in txt:
+            header_map["inc"] = h
+    logger.debug(f"  📋 Header map Mundial: {header_map}")
+
+    club_names = []
+    rows_loc = page.locator("table#leaguetypes-table tbody tr.clickable")
+    for c_idx in range(rows_loc.count()):
+        name = rows_loc.nth(c_idx).locator("td").nth(header_map["club"]).locator("span[data-bind*='text: name']").inner_text().strip()
+        if name:
+            club_names.append(name)
+
+    logger.info(f"🌍 {len(club_names)} selecciones encontradas en {WORLD_CUP_NAME}")
+    clubs_data = []
+
+    for j, club_target in enumerate(club_names):
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                safe_target = club_target.replace('"', '\\"')
+                club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:has-text(\"{safe_target}\"))").first
+                if not club_row.is_visible(timeout=5000):
+                    safe_navigate(page, league_url, "table#leaguetypes-table")
+                    club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:has-text(\"{safe_target}\"))").first
+
+                club_row.scroll_into_view_if_needed()
+                tds = club_row.locator("td")
+
+                # Objective (may not exist for national teams)
+                objective = ""
+                if tds.count() > header_map["obj"]:
+                    try:
+                        objective = tds.nth(header_map["obj"]).inner_text(timeout=2000).strip()
+                    except Exception:
+                        pass
+
+                # Squad value — retry loop, value loads dynamically
+                squad_val_str = ""
+                for _ in range(6):
+                    try:
+                        squad_val_str = tds.nth(header_map["val"]).inner_text(timeout=2000).strip()
+                    except Exception:
+                        pass
+                    if squad_val_str and squad_val_str not in ("0", "-", ""):
+                        break
+                    time.sleep(0.5)
+
+                # Fixed income / budget
+                fixed_income_str = "0"
+                if tds.count() > header_map["inc"]:
+                    for _ in range(3):
+                        try:
+                            fixed_income_str = tds.nth(header_map["inc"]).inner_text(timeout=2000).strip()
+                        except Exception:
+                            pass
+                        if fixed_income_str:
+                            break
+                        time.sleep(0.3)
+
+                logger.info(f"  🌍 Selección {j+1}/{len(club_names)}: {club_target} | Valor: {squad_val_str} | Obj: {objective}")
+                club_row.click()
+
+                players = parse_player_data(page, club_target)
+                if not players:
+                    raise Exception("Sin jugadores.")
+
+                club_data = {
+                    "name": club_target, "objective": objective,
+                    "squad_value": squad_val_str, "fixed_income": fixed_income_str,
+                    "players": players,
+                }
+                clubs_data.append(club_data)
+
+                sync_to_supabase([{
+                    "league_name": WORLD_CUP_NAME,
+                    "country": "World",
+                    "clubs": [club_data]
+                }], is_world_cup=True)
+
+                page.go_back(wait_until="domcontentloaded", timeout=20000)
+                page.wait_for_selector("table#leaguetypes-table", timeout=15000)
+                break
+            except BrowserCrashError:
+                raise
+            except Exception as e:
+                logger.error(f"  ❌ Error en selección {club_target} (intento {attempt+1}): {e}")
+                handle_popups(page)
+                safe_navigate(page, league_url, "table#leaguetypes-table")
+                time.sleep(2)
+
+    logger.info(f"✅ Mundial scrapeado: {len(clubs_data)} selecciones.")
+
+
 if __name__ == "__main__":
+    import sys
     USER = os.getenv("OSM_USER")
     PASS = os.getenv("OSM_PASS")
-    if USER and PASS: scrape_osm(USER, PASS)
-    else: logger.error("❌ Credenciales no encontradas.")
+    if not (USER and PASS):
+        logger.error("❌ Credenciales no encontradas.")
+        sys.exit(1)
+
+    if "--world-cup" in sys.argv:
+        # Solo scraper del Mundial — útil para re-sincronizar sin correr ligas normales
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context()
+            page = context.new_page()
+            if login_to_osm(page, USER, PASS):
+                scrape_world_cup(page)
+            else:
+                logger.error("❌ Login fallido.")
+            browser.close()
+    else:
+        scrape_osm(USER, PASS)
