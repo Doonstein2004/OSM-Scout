@@ -71,7 +71,7 @@ const GROUPS: GroupCfg[] = [
     { keys: ['Scotland'], en: 'Scotland', es: 'Escocia', pt: 'Escócia' },
   ]},
   { group: 'D', teams: [
-    { keys: ['United States', 'United States of America'], en: 'United States', es: 'Estados Unidos', pt: 'EUA' },
+    { keys: ['United States', 'United States of America', 'USA'], en: 'United States', es: 'Estados Unidos', pt: 'EUA' },
     { keys: ['Paraguay'], en: 'Paraguay', es: 'Paraguay', pt: 'Paraguai' },
     { keys: ['Australia'], en: 'Australia', es: 'Australia', pt: 'Austrália' },
     { keys: ['Turkey'], en: 'Turkey', es: 'Turquía', pt: 'Turquia' },
