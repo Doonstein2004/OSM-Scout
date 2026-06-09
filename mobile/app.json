@@ -12,8 +12,18 @@
     "plugins": [
       "expo-router",
       "expo-system-ui",
-      "react-native-edge-to-edge"
+      "react-native-edge-to-edge",
+      "expo-updates"
     ],
+    "updates": {
+      "url": "https://u.expo.dev/ff28b719-249b-4507-81a0-87e36ea07436",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "splash": {
       "image": "./assets/splash.jpg",
       "resizeMode": "contain",
