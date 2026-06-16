@@ -3,6 +3,9 @@ import time
 import os
 import re
 import logging
+from datetime import datetime, timezone
+
+from email_reader import fetch_osm_code
 
 logger = logging.getLogger(__name__)
 
@@ -121,85 +124,194 @@ def safe_navigate(page: Page, url: str, verify_selector: str = None, max_retries
                     except: pass
     return False
 
-def login_to_osm(page: Page, osm_username: str, osm_password: str, max_retries: int = 3):
-    print("🚀 Iniciando Login OSM...")
+SUCCESS_URLS_REGEX = re.compile(r".*(/Career|/ChooseLeague)")
+
+
+def _handle_privacy_notice(page: Page, login_url: str) -> bool:
+    """Acepta el aviso de privacidad si aparece. Devuelve True si lo manejó."""
+    if "PrivacyNotice" in page.url:
+        print("    ⚖️ Aviso de privacidad detectado. Aceptando...")
+        accept_btn = page.get_by_role(
+            "button", name=re.compile("Accept|Agree|Aceptar|OK", re.IGNORECASE)
+        )
+        if accept_btn.is_visible():
+            accept_btn.click(force=True)
+            page.wait_for_timeout(2000)
+            page.goto(login_url, wait_until="domcontentloaded")
+        return True
+    return False
+
+
+def _open_email_login(page: Page) -> bool:
+    """Pulsa 'Acceder con correo electrónico' y espera el campo de email."""
+    selectors = [
+        "button[data-bind*='showEnterEmail']",
+        "button.btn-sso:has-text('correo')",
+        "button:has-text('Acceder con correo')",
+        "button:has-text('Sign in with email')",
+        "button:has-text('email')",
+    ]
+    for sel in selectors:
+        loc = page.locator(sel).first
+        try:
+            if loc.is_visible(timeout=2000):
+                loc.click(force=True)
+                page.wait_for_selector("input#enter-email", timeout=8000)
+                return True
+        except Exception:
+            continue
+    # Quizá el campo de email ya está visible sin pulsar nada.
+    try:
+        if page.locator("input#enter-email").is_visible(timeout=2000):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _submit_email(page: Page, osm_email: str) -> bool:
+    """Rellena el email y pulsa 'Enviar código'."""
+    try:
+        email_input = page.locator("input#enter-email")
+        email_input.wait_for(state="visible", timeout=8000)
+        email_input.fill(osm_email)
+        # El botón se habilita cuando hay texto (buttonState / isDisabled).
+        send_btn = page.locator("button#send-email")
+        send_btn.wait_for(state="visible", timeout=5000)
+        for _ in range(10):
+            if send_btn.is_enabled():
+                break
+            time.sleep(0.3)
+        send_btn.click(force=True)
+        return True
+    except Exception as e:
+        print(f"    ⚠️ No se pudo enviar el email: {e}")
+        return False
+
+
+def _enter_otp_code(page: Page, code: str) -> bool:
+    """
+    Escribe el código OTP en el campo único de OSM (input#enter-code).
+    El binding es `textInput: ssoCode`, así que rellenamos el campo completo.
+    """
+    try:
+        code_input = page.locator("input#enter-code")
+        code_input.wait_for(state="visible", timeout=8000)
+        # fill() puede no disparar el binding knockout 'textInput'; tecleamos.
+        code_input.click()
+        code_input.fill("")
+        code_input.type(code, delay=30)
+        return True
+    except Exception as e:
+        print(f"    ⚠️ No se pudo escribir el código OTP: {e}")
+        return False
+
+
+def _submit_otp(page: Page):
+    """Pulsa 'Iniciar sesión' (button#send-code) para enviar el código."""
+    try:
+        send_btn = page.locator("button#send-code")
+        send_btn.wait_for(state="visible", timeout=5000)
+        for _ in range(10):
+            if send_btn.is_enabled():
+                break
+            time.sleep(0.3)
+        send_btn.click(force=True)
+        return
+    except Exception:
+        pass
+    # Fallback: Enter por si el formulario se envía con la tecla.
+    try:
+        page.keyboard.press("Enter")
+    except Exception:
+        pass
+
+
+def login_to_osm(page: Page, osm_email: str, _legacy_password: str = None,
+                 max_retries: int = 3, code_timeout: int = 120):
+    """
+    Login en OSM mediante código de un solo uso enviado al correo (Proton Bridge).
+
+    El parámetro `_legacy_password` se mantiene por compatibilidad con llamadas
+    antiguas (user, pass) pero ya no se usa: OSM migró a login por email.
+
+    Si no se obtiene el código por IMAP dentro de `code_timeout`, hace fallback
+    a entrada manual por terminal.
+    """
+    print("🚀 Iniciando Login OSM (email OTP)...")
     LOGIN_URL = "https://en.onlinesoccermanager.com/Login"
-    SUCCESS_URLS_REGEX = re.compile(".*(/Career|/ChooseLeague)")
-    
+
+    if not osm_email:
+        raise InvalidCredentialsError("Falta el email de OSM (OSM_EMAIL).")
+
     for attempt in range(max_retries):
         try:
             print(f"  🔑 Intento {attempt + 1}: Navegando a {LOGIN_URL}...")
-            # networkidle es muy lento en OSM, usamos domcontentloaded y un timeout más alto
             page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=90000)
-            
-            form_submitted = False
-            for check in range(30):
+
+            # Esperar a estabilizar y manejar popups/privacidad.
+            for _ in range(15):
                 handle_popups(page)
-                current_url = page.url
-                print(f"    Check {check+1}/30: {current_url}")
-                
-                if SUCCESS_URLS_REGEX.search(current_url):
-                    print("    ✅ Redirección exitosa detectada!")
+                if _handle_privacy_notice(page, LOGIN_URL):
+                    continue
+                if SUCCESS_URLS_REGEX.search(page.url):
+                    print("    ✅ Ya hay sesión activa (redirección detectada).")
                     return True
-                
-                if "PrivacyNotice" in current_url:
-                    print("    ⚖️ Aviso de privacidad detectado. Aceptando...")
-                    accept_btn = page.get_by_role("button", name=re.compile("Accept|Agree|Aceptar|OK", re.IGNORECASE))
-                    if accept_btn.is_visible():
-                        accept_btn.click(force=True)
-                        page.wait_for_timeout(2000)
-                        page.goto(LOGIN_URL, wait_until="domcontentloaded")
-                    continue
-                
-                if "Register" in current_url:
-                    print("    🔄 Redirigiendo desde Register a Login...")
-                    page.goto(LOGIN_URL, wait_until="domcontentloaded")
-                    continue
-                
-                if "Login" in current_url:
-                    username_input = page.locator("input#manager-name")
-                    password_input = page.locator("input#password")
-                    
-                    if not form_submitted:
-                        if username_input.is_visible(timeout=5000):
-                            print(f"    📝 Rellenando formulario para {osm_username}...")
-                            username_input.fill(osm_username)
-                            password_input.fill(osm_password)
-                            page.locator("button#login").click() # Clic directo
-                            form_submitted = True
-                            
-                            try:
-                                page.wait_for_function(
-                                    "() => window.location.href.includes('Career') || "
-                                    "window.location.href.includes('ChooseLeague') || "
-                                    "(document.querySelector('.feedbackcontainer') && "
-                                    "document.querySelector('.feedbackcontainer').style.display !== 'none' && "
-                                    "document.querySelector('.feedback-message') && "
-                                    "document.querySelector('.feedback-message').innerText.trim() !== '')",
-                                    timeout=20000
-                                )
-                                print("    ⏳ Espera tras submit finalizada.")
-                            except PlaywrightTimeoutError: 
-                                print("    ⏳ Timeout esperando redirección o mensaje de error...")
-                                pass
-                        else:
-                            print("    ⌛ Esperando a que el formulario sea visible...")
-                    else:
-                        # Si ya se envió el formulario, verificar si el contenedor de error se volvió visible
-                        error_container = page.locator(".feedbackcontainer")
-                        if error_container.is_visible(timeout=1000):
-                            error_msg = page.locator(".feedbackcontainer .feedback-message")
-                            msg_text = error_msg.inner_text().strip()
-                            if msg_text:
-                                print(f"    ❌ Error de OSM: {msg_text}")
-                                raise InvalidCredentialsError(f"OSM: {msg_text}")
-                        else:
-                            print("    ⏳ Esperando respuesta de login...")
-                
-                time.sleep(2)
-        except InvalidCredentialsError as e: raise e
+                if "Login" in page.url:
+                    break
+                time.sleep(1)
+
+            # 1) Abrir el formulario de email.
+            if not _open_email_login(page):
+                print("    ⚠️ No se pudo abrir el login por email. Reintentando...")
+                page.context.clear_cookies()
+                continue
+
+            # 2) Enviar el email. Marcamos el instante ANTES de pedir el código.
+            since_dt = datetime.now(timezone.utc)
+            if not _submit_email(page, osm_email):
+                continue
+            print(f"    📧 Código solicitado para {osm_email}. Esperando correo...")
+
+            # 3) Obtener el código (IMAP vía Bridge, con fallback manual).
+            code = fetch_osm_code(since_dt=since_dt, timeout=code_timeout)
+            if not code:
+                print("    ⌨️ Fallback manual: pega el código recibido en OSM.")
+                try:
+                    code = input("    Código OSM: ").strip()
+                except EOFError:
+                    code = ""
+            if not code:
+                print("    ❌ Sin código. Reintentando flujo de login...")
+                continue
+
+            # 4) Introducir el código y enviar.
+            if not _enter_otp_code(page, code):
+                continue
+            _submit_otp(page)
+
+            # 5) Esperar redirección a un área autenticada.
+            try:
+                page.wait_for_function(
+                    "() => window.location.href.includes('Career') || "
+                    "window.location.href.includes('ChooseLeague')",
+                    timeout=25000,
+                )
+                print("    ✅ Login por email exitoso.")
+                return True
+            except PlaywrightTimeoutError:
+                print("    ⏳ Timeout esperando redirección tras introducir el código.")
+                if SUCCESS_URLS_REGEX.search(page.url):
+                    return True
+
+        except InvalidCredentialsError:
+            raise
         except Exception as e:
             print(f"  ⚠️ Error en intento {attempt + 1}: {e}")
-            page.context.clear_cookies()
+            try:
+                page.context.clear_cookies()
+            except Exception:
+                pass
             page.wait_for_timeout(5000)
+
     return False

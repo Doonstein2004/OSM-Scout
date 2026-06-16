@@ -55,7 +55,7 @@ def is_special_league(league_name):
 
 
 # Configuración para empezar desde una liga específica (poner None para empezar desde el principio)
-START_FROM = "Malta"
+START_FROM = None
 
 def parse_value_string(value_str):
     if not isinstance(value_str, str): return 0, "N/A"
@@ -143,13 +143,13 @@ def parse_player_data(page, expected_club):
         logger.error(f"    💥 Error crítico extrayendo jugadores: {e}")
         return []
 
-def scrape_osm(username, password):
+def scrape_osm(email):
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=False)
         context = browser.new_context()
         page = context.new_page()
-        
-        if not login_to_osm(page, username, password):
+
+        if not login_to_osm(page, email):
             logger.error("❌ Login fallido.")
             return
 
@@ -314,7 +314,7 @@ def scrape_osm(username, password):
                     context = browser.new_context()
                     page = context.new_page()
                     logger.info("🔄 Nuevo browser iniciado. Re-autenticando...")
-                    if not login_to_osm(page, username, password):
+                    if not login_to_osm(page, email):
                         logger.error("❌ Re-login fallido tras crash. Abortando scrape.")
                         break
                     if not safe_navigate(page, "https://en.onlinesoccermanager.com/LeagueTypes", "table#leaguetypes-table"):
@@ -472,10 +472,9 @@ def scrape_world_cup(page):
 
 if __name__ == "__main__":
     import sys
-    USER = os.getenv("OSM_USER")
-    PASS = os.getenv("OSM_PASS")
-    if not (USER and PASS):
-        logger.error("❌ Credenciales no encontradas.")
+    EMAIL = os.getenv("OSM_EMAIL")
+    if not EMAIL:
+        logger.error("❌ Falta OSM_EMAIL en el entorno.")
         sys.exit(1)
 
     if "--world-cup" in sys.argv:
@@ -484,10 +483,10 @@ if __name__ == "__main__":
             browser = p.chromium.launch(headless=True)
             context = browser.new_context()
             page = context.new_page()
-            if login_to_osm(page, USER, PASS):
+            if login_to_osm(page, EMAIL):
                 scrape_world_cup(page)
             else:
                 logger.error("❌ Login fallido.")
             browser.close()
     else:
-        scrape_osm(USER, PASS)
+        scrape_osm(EMAIL)
