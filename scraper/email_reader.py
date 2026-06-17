@@ -14,8 +14,11 @@ Variables de entorno:
     PROTON_BRIDGE_PORT   (default 1143)
     PROTON_BRIDGE_USER   usuario/email IMAP que muestra Bridge
     PROTON_BRIDGE_PASS   contraseña generada por Bridge (NO la de la cuenta)
-    OSM_SENDER           (opcional) substring del remitente OSM para filtrar
+    OSM_SENDER           substring del remitente OSM para filtrar
+                         (default: confirmation.onlinesoccermanager.com)
 """
+
+from __future__ import annotations
 
 import os
 import re
@@ -23,22 +26,25 @@ import time
 import email
 import imaplib
 import logging
-from datetime import datetime, timezone
 from email.header import decode_header
-from email.utils import parsedate_to_datetime
 
 logger = logging.getLogger(__name__)
 
-# Remitentes esperados de OSM. Se filtra por substring (case-insensitive).
-# Ajustar OSM_SENDER por env si el dominio real difiere.
-_DEFAULT_SENDERS = ["onlinesoccermanager", "gamebasics", "noreply"]
+_DEFAULT_SENDERS = ["confirmation.onlinesoccermanager.com", "onlinesoccermanager", "gamebasics"]
 
-# El OTP de OSM es típicamente de 4 a 8 dígitos. Capturamos el primero plausible.
-_CODE_RE = re.compile(r"\b(\d{4,8})\b")
+# OSM coloca el código en <strong>XXXXXX</strong> dentro de un <h1>.
+_CODE_HTML_RE = re.compile(
+    r"<(?:h[1-6]|strong|b)[^>]*>\s*(\d{6})\s*</(?:h[1-6]|strong|b)>",
+    re.IGNORECASE | re.DOTALL,
+)
+# Fallback: número de 6 dígitos cerca de palabras clave del texto plano.
+_CODE_CONTEXT_RE = re.compile(
+    r"(?:below|code|login|provided|enter)[^0-9]{0,40}(\d{6})\b",
+    re.IGNORECASE,
+)
 
 
 def _decode_str(raw) -> str:
-    """Decodifica encabezados MIME (=?utf-8?...?=) a texto plano."""
     if raw is None:
         return ""
     parts = decode_header(raw)
@@ -54,9 +60,9 @@ def _decode_str(raw) -> str:
     return "".join(out)
 
 
-def _extract_body(msg) -> str:
-    """Devuelve el texto del mensaje (prefiere text/plain, cae a text/html)."""
-    plain, html = "", ""
+def _extract_code_from_msg(msg) -> str | None:
+    """Extrae el código OTP de un mensaje MIME. Busca primero en HTML raw."""
+    html_raw, plain_raw = "", ""
     if msg.is_multipart():
         for part in msg.walk():
             ctype = part.get_content_type()
@@ -64,39 +70,60 @@ def _extract_body(msg) -> str:
                 continue
             try:
                 payload = part.get_payload(decode=True)
+                if not payload:
+                    continue
+                charset = part.get_content_charset() or "utf-8"
+                decoded = payload.decode(charset, errors="replace")
             except Exception:
                 continue
-            if not payload:
-                continue
-            charset = part.get_content_charset() or "utf-8"
-            try:
-                decoded = payload.decode(charset, errors="replace")
-            except (LookupError, TypeError):
-                decoded = payload.decode("utf-8", errors="replace")
-            if ctype == "text/plain":
-                plain += decoded
-            elif ctype == "text/html":
-                html += decoded
+            if ctype == "text/html":
+                html_raw += decoded
+            elif ctype == "text/plain":
+                plain_raw += decoded
     else:
         payload = msg.get_payload(decode=True)
-        charset = msg.get_content_charset() or "utf-8"
         if payload:
+            charset = msg.get_content_charset() or "utf-8"
             try:
-                plain = payload.decode(charset, errors="replace")
-            except (LookupError, TypeError):
-                plain = payload.decode("utf-8", errors="replace")
+                decoded = payload.decode(charset, errors="replace")
+            except Exception:
+                decoded = payload.decode("utf-8", errors="replace")
+            if "html" in msg.get_content_type():
+                html_raw = decoded
+            else:
+                plain_raw = decoded
 
-    if plain.strip():
-        return plain
-    # Quitar tags HTML de forma simple para extraer el código del cuerpo HTML.
-    return re.sub(r"<[^>]+>", " ", html)
+    # 1. HTML raw: el código está en <strong>XXXXXX</strong>
+    if html_raw:
+        m = _CODE_HTML_RE.search(html_raw)
+        if m:
+            return m.group(1)
+
+        # Fallback: HTML limpio sin tags ni colores CSS
+        html_clean = re.sub(r'<[^>]+>', ' ', html_raw, flags=re.DOTALL)
+        html_clean = re.sub(r'#[0-9a-fA-F]{3,6}\b', ' ', html_clean)
+        candidates = re.findall(r'\b(\d{6})\b', html_clean)
+        if candidates:
+            return candidates[0]
+
+    # 2. Texto plano cerca de palabras clave
+    if plain_raw:
+        m = _CODE_CONTEXT_RE.search(plain_raw)
+        if m:
+            return m.group(1)
+        candidates = re.findall(r'\b(\d{6})\b', plain_raw)
+        if candidates:
+            return candidates[0]
+
+    logger.warning(f"    ⚠️ No se encontró código (subject: {_decode_str(msg.get('Subject', ''))})")
+    return None
 
 
 def _connect():
     host = os.getenv("PROTON_BRIDGE_HOST", "127.0.0.1")
     port = int(os.getenv("PROTON_BRIDGE_PORT", "1143"))
     user = os.getenv("PROTON_BRIDGE_USER")
-    pwd = os.getenv("PROTON_BRIDGE_PASS")
+    pwd  = os.getenv("PROTON_BRIDGE_PASS")
 
     if not (user and pwd):
         raise RuntimeError(
@@ -108,88 +135,113 @@ def _connect():
     try:
         conn.starttls()
     except Exception as e:
-        # Algunas configuraciones de Bridge usan IMAP4_SSL directo; lo informamos.
-        logger.warning(f"  ✉️ STARTTLS falló ({e}); intentando login sin TLS explícito.")
+        logger.warning(f"  ✉️ STARTTLS falló ({e}); continuando sin TLS explícito.")
     conn.login(user, pwd)
     return conn
 
 
-def _find_code_in_inbox(conn, since_dt: datetime, senders) -> str | None:
+def _get_osm_ids(conn, senders: list[str]) -> frozenset[bytes]:
+    """Devuelve el conjunto de IDs IMAP de mensajes OSM en el INBOX."""
     conn.select("INBOX")
-    # IMAP SINCE trabaja por fecha (día), filtramos la hora exacta luego con la
-    # cabecera Date. Buscamos los mensajes del día (UTC) hacia adelante.
-    date_str = since_dt.strftime("%d-%b-%Y")
-    typ, data = conn.search(None, "SINCE", date_str)
-    if typ != "OK" or not data or not data[0]:
-        return None
+    try:
+        conn.check()
+    except Exception:
+        pass
 
-    ids = data[0].split()
-    # Revisar de más reciente a más antiguo.
-    for msg_id in reversed(ids):
-        typ, msg_data = conn.fetch(msg_id, "(RFC822)")
-        if typ != "OK" or not msg_data:
-            continue
-        raw = msg_data[0][1]
-        msg = email.message_from_bytes(raw)
-
-        # Filtrar por fecha exacta (>= momento en que pedimos el código).
+    # Buscar por cada remitente conocido y unir resultados
+    all_ids: set[bytes] = set()
+    for sender in senders:
         try:
-            msg_dt = parsedate_to_datetime(msg.get("Date"))
-            if msg_dt.tzinfo is None:
-                msg_dt = msg_dt.replace(tzinfo=timezone.utc)
-            if msg_dt < since_dt:
-                continue
+            typ, data = conn.search(None, "FROM", sender)
+            if typ == "OK" and data and data[0]:
+                all_ids.update(data[0].split())
         except Exception:
-            pass  # Si no se puede parsear la fecha, no descartamos por ello.
+            pass
 
-        sender = _decode_str(msg.get("From", "")).lower()
-        subject = _decode_str(msg.get("Subject", ""))
-        if senders and not any(s in sender for s in senders):
-            continue
-
-        body = _extract_body(msg)
-        haystack = f"{subject}\n{body}"
-        match = _CODE_RE.search(haystack)
-        if match:
-            code = match.group(1)
-            logger.info(f"  ✅ Código OSM encontrado en correo de '{sender}': {code}")
-            return code
-
-    return None
+    return frozenset(all_ids)
 
 
-def fetch_osm_code(since_dt: datetime | None = None,
-                   timeout: int = 120,
+def snapshot_inbox() -> frozenset[bytes]:
+    """
+    Toma un snapshot de los IDs IMAP de mensajes OSM actualmente en el INBOX.
+    Llamar ANTES de pedir el código a OSM. El resultado se pasa a fetch_osm_code.
+    """
+    sender_env = os.getenv("OSM_SENDER")
+    senders = [sender_env.lower()] if sender_env else _DEFAULT_SENDERS
+    try:
+        conn = _connect()
+        try:
+            ids = _get_osm_ids(conn, senders)
+            logger.info(f"  📸 Snapshot inbox: {len(ids)} mensajes OSM existentes.")
+            return ids
+        finally:
+            try:
+                conn.logout()
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning(f"  ⚠️ No se pudo hacer snapshot del inbox: {e}")
+        return frozenset()
+
+
+def fetch_osm_code(snapshot: frozenset[bytes] | None = None,
+                   timeout: int = 300,
                    poll_interval: int = 5) -> str | None:
     """
-    Hace polling al INBOX de Proton (vía Bridge) hasta encontrar el código OSM
-    o agotar `timeout` segundos. Devuelve el código (str) o None.
+    Hace polling al INBOX de Proton (vía Bridge) hasta encontrar un mensaje OSM
+    NUEVO (no presente en el snapshot) y extrae el código OTP.
 
-    since_dt: solo considera correos con fecha >= a este instante (UTC).
-              Por defecto: ahora. Pásalo justo antes de pulsar "Enviar código".
+    snapshot:      resultado de snapshot_inbox(), llamado antes de pedir el código.
+                   Si es None se usa un snapshot vacío (acepta cualquier mensaje OSM).
+    timeout:       segundos máximos de espera (el OTP expira en 5 min).
+    poll_interval: segundos entre polls.
     """
-    if since_dt is None:
-        since_dt = datetime.now(timezone.utc)
+    if snapshot is None:
+        snapshot = frozenset()
 
     sender_env = os.getenv("OSM_SENDER")
     senders = [sender_env.lower()] if sender_env else _DEFAULT_SENDERS
 
     logger.info(f"  📬 Buscando código OSM en Proton (timeout {timeout}s)...")
     deadline = time.time() + timeout
+    poll = 0
+
     while time.time() < deadline:
+        poll += 1
         try:
             conn = _connect()
             try:
-                code = _find_code_in_inbox(conn, since_dt, senders)
+                current_ids = _get_osm_ids(conn, senders)
+                new_ids = current_ids - snapshot
+
+                if new_ids:
+                    logger.info(f"  📨 {len(new_ids)} mensaje(s) OSM nuevo(s) detectado(s).")
+                    for msg_id in new_ids:
+                        try:
+                            typ, msg_data = conn.fetch(msg_id, "(RFC822)")
+                            if typ != "OK" or not msg_data:
+                                continue
+                            msg = email.message_from_bytes(msg_data[0][1])
+                            sender = _decode_str(msg.get("From", "")).lower()
+                            code = _extract_code_from_msg(msg)
+                            if code:
+                                logger.info(
+                                    f"  ✅ Código OSM encontrado en correo de '{sender}': {code}"
+                                )
+                                return code
+                        except Exception as e:
+                            logger.warning(f"  ⚠️ Error procesando mensaje {msg_id}: {e}")
+                else:
+                    remaining = int(deadline - time.time())
+                    logger.info(f"  ⏳ Poll {poll}: sin mensajes nuevos. ({remaining}s restantes)")
             finally:
                 try:
                     conn.logout()
                 except Exception:
                     pass
-            if code:
-                return code
         except Exception as e:
             logger.warning(f"  ⚠️ Error leyendo IMAP de Bridge: {e}")
+
         time.sleep(poll_interval)
 
     logger.error("  ❌ No se encontró el código OSM en el correo dentro del timeout.")

@@ -1,11 +1,8 @@
-from playwright.sync_api import expect, Error as PlaywrightError, Page, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 import time
-import os
 import re
 import logging
-from datetime import datetime, timezone
-
-from email_reader import fetch_osm_code
+from email_reader import fetch_osm_code, snapshot_inbox
 
 logger = logging.getLogger(__name__)
 
@@ -127,62 +124,153 @@ def safe_navigate(page: Page, url: str, verify_selector: str = None, max_retries
 SUCCESS_URLS_REGEX = re.compile(r".*(/Career|/ChooseLeague)")
 
 
-def _handle_privacy_notice(page: Page, login_url: str) -> bool:
-    """Acepta el aviso de privacidad si aparece. Devuelve True si lo manejó."""
-    if "PrivacyNotice" in page.url:
-        print("    ⚖️ Aviso de privacidad detectado. Aceptando...")
-        accept_btn = page.get_by_role(
-            "button", name=re.compile("Accept|Agree|Aceptar|OK", re.IGNORECASE)
-        )
-        if accept_btn.is_visible():
-            accept_btn.click(force=True)
-            page.wait_for_timeout(2000)
-            page.goto(login_url, wait_until="domcontentloaded")
-        return True
+def _click_first_visible(page: Page, selectors: list, timeout_ms: int = 4000) -> bool:
+    """Intenta hacer clic en el primer selector visible de la lista."""
+    for sel in selectors:
+        try:
+            loc = page.locator(sel).first
+            if loc.is_visible(timeout=timeout_ms):
+                loc.click(force=True)
+                return True
+        except Exception:
+            continue
     return False
+
+
+def _wait_for_navigation(page: Page, timeout_ms: int = 10000):
+    """Espera a que la URL cambie o la página cargue; no falla si no hay cambio."""
+    try:
+        page.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
+    except Exception:
+        pass
+
+
+# Mapa de estados: para cada fragmento de URL, qué hacer.
+# El loop lee la URL, busca el estado y ejecuta la acción.
+# Si la URL no casa con ningún estado conocido espera y reintenta.
+def _get_page_state(url: str) -> str:
+    if SUCCESS_URLS_REGEX.search(url):
+        return "authenticated"
+    if "PrivacyNotice" in url:
+        return "privacy"
+    if "Register" in url:
+        return "register"
+    if "Login" in url:
+        return "login"
+    return "unknown"
+
+
+def _resolve_to_login(page: Page, max_steps: int = 12) -> str:
+    """
+    State machine que lleva la página hasta /Login (o detecta sesión activa).
+    En cada paso lee la URL, decide la acción y espera la siguiente carga.
+    No asume secuencia: si OSM añade una página nueva, simplemente la deja
+    pasar (unknown) y reintenta.
+    """
+    for step in range(max_steps):
+        handle_popups(page)
+        state = _get_page_state(page.url)
+        print(f"    [{step+1}] Estado: {state} | {page.url}")
+
+        if state == "authenticated":
+            return "authenticated"
+
+        if state == "login":
+            return "login"
+
+        if state == "privacy":
+            clicked = _click_first_visible(page, [
+                "button[data-bind*='continueToOSM']",
+                "button.btn-orange:has-text('Accept')",
+                "button:has-text('Accept')",
+                "button:has-text('Aceptar')",
+            ])
+            if clicked:
+                _wait_for_navigation(page)
+            else:
+                time.sleep(2)
+            continue
+
+        if state == "register":
+            clicked = _click_first_visible(page, [
+                "button[data-bind*='goToLogin']",
+                "button.btn-alternative:has-text('Log in')",
+                "button:has-text('Log in')",
+                "button:has-text('Iniciar sesión')",
+            ])
+            if clicked:
+                _wait_for_navigation(page)
+            else:
+                # Botón no encontrado: navegar directo
+                page.goto("https://en.onlinesoccermanager.com/Login",
+                          wait_until="domcontentloaded", timeout=30000)
+            continue
+
+        # Estado desconocido: esperar a que la página se estabilice
+        time.sleep(2)
+
+    return "unknown"
 
 
 def _open_email_login(page: Page) -> bool:
     """Pulsa 'Acceder con correo electrónico' y espera el campo de email."""
-    selectors = [
+    # OSM usa Knockout.js: esperar a que cualquier botón de login esté en DOM
+    # antes de intentar interactuar (la página carga JS de forma asíncrona).
+    btn_selectors = [
         "button[data-bind*='showEnterEmail']",
         "button.btn-sso:has-text('correo')",
         "button:has-text('Acceder con correo')",
         "button:has-text('Sign in with email')",
-        "button:has-text('email')",
     ]
-    for sel in selectors:
-        loc = page.locator(sel).first
+    # Esperar a que al menos uno de los botones aparezca (hasta 20s)
+    found_sel = None
+    for sel in btn_selectors:
         try:
-            if loc.is_visible(timeout=2000):
-                loc.click(force=True)
-                page.wait_for_selector("input#enter-email", timeout=8000)
-                return True
+            page.wait_for_selector(sel, timeout=20000)
+            found_sel = sel
+            break
         except Exception:
             continue
-    # Quizá el campo de email ya está visible sin pulsar nada.
+
+    # Si el campo de email ya está visible (animación pre-abierta), no hace falta clic
     try:
-        if page.locator("input#enter-email").is_visible(timeout=2000):
+        if page.locator("input#enter-email").is_visible(timeout=1000):
             return True
     except Exception:
         pass
-    return False
+
+    if not found_sel:
+        return False
+
+    try:
+        page.locator(found_sel).first.click(force=True)
+        page.wait_for_selector("input#enter-email", timeout=10000)
+        return True
+    except Exception as e:
+        print(f"    ⚠️ Clic en botón de email falló: {e}")
+        return False
 
 
 def _submit_email(page: Page, osm_email: str) -> bool:
-    """Rellena el email y pulsa 'Enviar código'."""
+    """Rellena el email y pulsa 'Send code'."""
     try:
         email_input = page.locator("input#enter-email")
         email_input.wait_for(state="visible", timeout=8000)
-        email_input.fill(osm_email)
-        # El botón se habilita cuando hay texto (buttonState / isDisabled).
+        # fill() no dispara los eventos de teclado que Knockout textInput necesita
+        # para actualizar loginMail() y habilitar el botón. Usamos type() en su lugar.
+        email_input.click()
+        email_input.fill("")          # limpiar por si hay texto previo
+        email_input.type(osm_email, delay=30)
+
+        # Esperar a que Knockout habilite el botón (isDisabled: loginMail().length < 1)
         send_btn = page.locator("button#send-email")
         send_btn.wait_for(state="visible", timeout=5000)
-        for _ in range(10):
+        for _ in range(20):
             if send_btn.is_enabled():
                 break
             time.sleep(0.3)
-        send_btn.click(force=True)
+
+        send_btn.click()
         return True
     except Exception as e:
         print(f"    ⚠️ No se pudo enviar el email: {e}")
@@ -228,7 +316,8 @@ def _submit_otp(page: Page):
 
 
 def login_to_osm(page: Page, osm_email: str, _legacy_password: str = None,
-                 max_retries: int = 3, code_timeout: int = 120):
+                 max_retries: int = 3, code_timeout: int = 300,
+                 confirm_code: bool = False):
     """
     Login en OSM mediante código de un solo uso enviado al correo (Proton Bridge).
 
@@ -248,18 +337,17 @@ def login_to_osm(page: Page, osm_email: str, _legacy_password: str = None,
         try:
             print(f"  🔑 Intento {attempt + 1}: Navegando a {LOGIN_URL}...")
             page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=90000)
+            handle_popups(page)
 
-            # Esperar a estabilizar y manejar popups/privacidad.
-            for _ in range(15):
-                handle_popups(page)
-                if _handle_privacy_notice(page, LOGIN_URL):
-                    continue
-                if SUCCESS_URLS_REGEX.search(page.url):
-                    print("    ✅ Ya hay sesión activa (redirección detectada).")
-                    return True
-                if "Login" in page.url:
-                    break
-                time.sleep(1)
+            # State machine: detecta la página actual y actúa hasta llegar a /Login
+            state = _resolve_to_login(page)
+            if state == "authenticated":
+                print("    ✅ Ya hay sesión activa.")
+                return True
+            if state != "login":
+                print(f"    ⚠️ Estado inesperado tras redirects: {state}. Reintentando...")
+                page.context.clear_cookies()
+                continue
 
             # 1) Abrir el formulario de email.
             if not _open_email_login(page):
@@ -267,14 +355,15 @@ def login_to_osm(page: Page, osm_email: str, _legacy_password: str = None,
                 page.context.clear_cookies()
                 continue
 
-            # 2) Enviar el email. Marcamos el instante ANTES de pedir el código.
-            since_dt = datetime.now(timezone.utc)
+            # 2) Snapshot del inbox ANTES de enviar (para detectar mensajes nuevos
+            #    sin depender del reloj ni del Date header del email de OSM).
+            inbox_snapshot = snapshot_inbox()
             if not _submit_email(page, osm_email):
                 continue
             print(f"    📧 Código solicitado para {osm_email}. Esperando correo...")
 
             # 3) Obtener el código (IMAP vía Bridge, con fallback manual).
-            code = fetch_osm_code(since_dt=since_dt, timeout=code_timeout)
+            code = fetch_osm_code(snapshot=inbox_snapshot, timeout=code_timeout)
             if not code:
                 print("    ⌨️ Fallback manual: pega el código recibido en OSM.")
                 try:
@@ -284,6 +373,15 @@ def login_to_osm(page: Page, osm_email: str, _legacy_password: str = None,
             if not code:
                 print("    ❌ Sin código. Reintentando flujo de login...")
                 continue
+
+            if confirm_code:
+                print(f"    🔎 Código encontrado: {code}")
+                try:
+                    override = input("    ↩ Enter para usar ese código, o escribe otro: ").strip()
+                    if override:
+                        code = override
+                except EOFError:
+                    pass
 
             # 4) Introducir el código y enviar.
             if not _enter_otp_code(page, code):
