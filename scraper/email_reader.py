@@ -120,22 +120,26 @@ def _extract_code_from_msg(msg) -> str | None:
 
 
 def _connect():
-    host = os.getenv("PROTON_BRIDGE_HOST", "127.0.0.1")
-    port = int(os.getenv("PROTON_BRIDGE_PORT", "1143"))
-    user = os.getenv("PROTON_BRIDGE_USER")
-    pwd  = os.getenv("PROTON_BRIDGE_PASS")
+    host = os.getenv("IMAP_HOST") or os.getenv("PROTON_BRIDGE_HOST", "imap.gmail.com")
+    port = int(os.getenv("IMAP_PORT") or os.getenv("PROTON_BRIDGE_PORT", "993"))
+    user = os.getenv("IMAP_USER") or os.getenv("PROTON_BRIDGE_USER")
+    pwd  = os.getenv("IMAP_PASS") or os.getenv("PROTON_BRIDGE_PASS")
 
     if not (user and pwd):
         raise RuntimeError(
-            "Faltan PROTON_BRIDGE_USER / PROTON_BRIDGE_PASS. "
-            "Configura Proton Mail Bridge y copia sus credenciales IMAP."
+            "Faltan IMAP_USER / IMAP_PASS. "
+            "Para Gmail: habilita IMAP y genera un App Password en tu cuenta Google."
         )
 
-    conn = imaplib.IMAP4(host, port)
-    try:
-        conn.starttls()
-    except Exception as e:
-        logger.warning(f"  ✉️ STARTTLS falló ({e}); continuando sin TLS explícito.")
+    if port == 993:
+        conn = imaplib.IMAP4_SSL(host, port)
+    else:
+        conn = imaplib.IMAP4(host, port)
+        try:
+            conn.starttls()
+        except Exception as e:
+            logger.warning(f"  ✉️ STARTTLS falló ({e}); continuando sin TLS explícito.")
+
     conn.login(user, pwd)
     return conn
 
