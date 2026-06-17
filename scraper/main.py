@@ -145,7 +145,7 @@ def parse_player_data(page, expected_club):
 
 def scrape_osm(email):
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(headless=True)
         context = browser.new_context()
         page = context.new_page()
 
