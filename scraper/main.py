@@ -40,9 +40,9 @@ dotenv.load_dotenv()
 def is_special_league(league_name):
     name_lower = league_name.lower()
     special_keywords = [
-        "history", "champions", "tournament", "battle", "royale", 
-        "fantasy", "cup", "team of the season", "quarter-finals", 
-        "semi-finals", "final", "community", "stars", "boss"
+        "history", "champions", "tournament", "battle", "royale",
+        "fantasy", "cup", "team of the season", "quarter-finals",
+        "semi-finals", "final", "community", "stars", "boss", "winner"
     ]
     if any(keyword in name_lower for keyword in special_keywords):
         return True
