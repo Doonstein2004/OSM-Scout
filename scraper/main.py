@@ -75,7 +75,11 @@ def parse_value_string(value_str):
     return value, value_str
 
 def parse_player_data(page, expected_club):
+    """Returns (players, had_row_errors). had_row_errors=True means at least one
+    player row failed to parse — callers should skip DB cleanup to avoid
+    incorrectly deleting players that were missed due to transient errors."""
     players = []
+    had_row_errors = False
     logger.debug(f"    🔍 Iniciando extracción de jugadores para: {expected_club}")
     try:
         header_selector = 'h2[data-bind="text: name"]'
@@ -87,11 +91,11 @@ def parse_player_data(page, expected_club):
         except Exception:
             logger.warning(f"    ⚠️ No se pudo confirmar el header '{expected_club}' con el selector H2. Intentando continuar...")
             page.wait_for_selector("table.table-sticky", timeout=10000)
-            
+
         table = page.locator("table.table-sticky")
         theads = table.locator("thead")
         tbodies = table.locator("tbody")
-        
+
         for i in range(theads.count()):
             category = theads.nth(i).locator("th").first.inner_text().strip()
             rows = tbodies.nth(i).locator("tr")
@@ -100,32 +104,27 @@ def parse_player_data(page, expected_club):
                 try:
                     name_loc = row.locator("td.td-player-name span.semi-bold")
                     if name_loc.count() == 0: continue
-                    
+
                     name = name_loc.first.inner_text(timeout=2000).strip()
-                    # Detailed position (LW, ST, CAM, etc.)
                     pos_detail = row.locator("td").nth(1).inner_text(timeout=2000).strip()
                     age = int(row.locator("td").nth(2).inner_text(timeout=2000).strip())
-                    
-                    # Nationality from flag title
+
                     nat_el = row.locator("td").nth(3).locator("span.flag-icon")
                     nationality = nat_el.first.get_attribute("title", timeout=2000) if nat_el.count() > 0 else "N/A"
-                    
-                    # Stats
-                    # Att: index 5, Def: index 6, Ovr: index 7
+
                     att_str = row.locator("td").nth(5).inner_text(timeout=2000).strip()
                     att = int(att_str) if att_str.isdigit() else 0
                     def_str = row.locator("td").nth(6).inner_text(timeout=2000).strip()
                     defe = int(def_str) if def_str.isdigit() else 0
                     ovr_str = row.locator("td").nth(7).inner_text(timeout=2000).strip()
                     ovr_stat = int(ovr_str) if ovr_str.isdigit() else 0
-                    
-                    # Value
+
                     val_el = row.locator("td.td-price span.club-funds-amount")
                     val_str = val_el.first.inner_text(timeout=2000).strip() if val_el.count() > 0 else "N/A"
                     val_amount, _ = parse_value_string(val_str)
-                    
+
                     final_overall = att if "Forward" in category else ovr_stat if "Midfielder" in category else defe
-                    
+
                     player_obj = {
                         "name": name, "position": category, "detailed_position": pos_detail,
                         "age": age, "nationality": nationality, "attack": att, "defense": defe,
@@ -134,14 +133,15 @@ def parse_player_data(page, expected_club):
                     players.append(player_obj)
                     logger.debug(f"      - {name} ({pos_detail}) | OVR: {final_overall}")
                 except Exception as e:
+                    had_row_errors = True
                     logger.warning(f"      ❌ Fila omitida en {category}: {e}")
-            
+
             logger.debug(f"    📊 {category}: {rows.count()} filas -> {len([p for p in players if p['position'] == category])} válidos.")
-            
-        return players
+
+        return players, had_row_errors
     except Exception as e:
         logger.error(f"    💥 Error crítico extrayendo jugadores: {e}")
-        return []
+        return [], True
 
 def scrape_osm(email):
     with sync_playwright() as p:
@@ -261,13 +261,14 @@ def scrape_osm(email):
                                     current_club_row.click(force=True, timeout=5000)
                                 page.wait_for_selector(f'{header_selector}:has-text("{safe_club_name}")', timeout=15000)
 
-                            players = parse_player_data(page, club_name)
+                            players, had_row_errors = parse_player_data(page, club_name)
                             if not players:
                                 raise Exception("No se pudieron extraer jugadores.")
 
                             club_data = {
                                 "name": club_name, "objective": objective, "squad_value": squad_val_str,
-                                "fixed_income": fixed_income_str, "players": players
+                                "fixed_income": fixed_income_str, "players": players,
+                                "had_scrape_errors": had_row_errors
                             }
                             clubs_in_league.append(club_data)
                             
@@ -439,14 +440,14 @@ def scrape_world_cup(page):
                 logger.info(f"  🌍 Selección {j+1}/{len(club_names)}: {club_target} | Valor: {squad_val_str} | Obj: {objective}")
                 club_row.click()
 
-                players = parse_player_data(page, club_target)
+                players, had_row_errors = parse_player_data(page, club_target)
                 if not players:
                     raise Exception("Sin jugadores.")
 
                 club_data = {
                     "name": club_target, "objective": objective,
                     "squad_value": squad_val_str, "fixed_income": fixed_income_str,
-                    "players": players,
+                    "players": players, "had_scrape_errors": had_row_errors
                 }
                 clubs_data.append(club_data)
 

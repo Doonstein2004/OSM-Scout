@@ -155,22 +155,20 @@ def sync_to_supabase(data, is_world_cup=False):
                 existing_players = existing_res.data if existing_res.data else []
             except: pass
             
-            existing_dict_for_diff = {(p["name"], p["nationality"]): p for p in existing_players}
-            
+            # Incluye age en la clave para diferenciar jugadores homónimos en el mismo club
+            existing_dict_for_diff = {(p["name"], p["nationality"], p["age"]): p for p in existing_players}
+
             # PREPARAR PAYLOAD Y TRACKEAR CAMBIOS
             players_payload = []
             seen_keys_db = set()
             club_has_diff = False
-            
+
             for p in club["players"]:
                 # Llave estricta para la Base de Datos (incluye edad)
                 db_key = (p["name"], p["age"], p["nationality"])
                 if db_key in seen_keys_db: continue
                 seen_keys_db.add(db_key)
-                
-                # Llave para el Diff Log (ignora la edad, así detectamos si cumplió años)
-                diff_key = (p["name"], p["nationality"])
-                
+
                 p_payload = {
                     "club_id": club_id, "name": p["name"], "position": p["position"],
                     "detailed_position": p["detailed_position"], "age": p["age"],
@@ -181,9 +179,13 @@ def sync_to_supabase(data, is_world_cup=False):
                 }
                 players_payload.append(p_payload)
 
-                # Comparar con el actual en DB (para el diff)
-                if diff_key in existing_dict_for_diff:
-                    old = existing_dict_for_diff[diff_key]
+                # Buscar en DB: primero por edad exacta, luego por edad-1 (cumpleaños)
+                diff_key = (p["name"], p["nationality"], p["age"])
+                birthday_key = (p["name"], p["nationality"], p["age"] - 1)
+                matched_key = diff_key if diff_key in existing_dict_for_diff else (birthday_key if birthday_key in existing_dict_for_diff else None)
+                old = existing_dict_for_diff.get(matched_key) if matched_key else None
+
+                if old:
                     diffs = []
                     if old.get("overall") != p["overall"]:
                         diffs.append(f"OVR: {old.get('overall')}->{p['overall']}")
@@ -193,15 +195,14 @@ def sync_to_supabase(data, is_world_cup=False):
                         diffs.append(f"POS: {old.get('detailed_position')}->{p['detailed_position']}")
                     if old.get("age") != p["age"]:
                         diffs.append(f"EDAD: {old.get('age')}->{p['age']}")
-                    
+
                     if diffs:
-                        if not club_has_diff: 
+                        if not club_has_diff:
                             diff_logger.info(f"\n--- CLUB: {club['name']} ({league['league_name']}) ---")
                             club_has_diff = True
                         diff_logger.info(f"  [*] {p['name']}: " + " | ".join(diffs))
-                        
-                    # Lo quitamos para saber quiénes ya NO están en el club
-                    existing_dict_for_diff.pop(diff_key, None)
+
+                    existing_dict_for_diff.pop(matched_key, None)
 
                 else:
                     if not club_has_diff:
@@ -221,23 +222,32 @@ def sync_to_supabase(data, is_world_cup=False):
                     
                     res = upsert_players()
                     if res.data:
-                        print(f"    ✅ {len(res.data)} jugadores sincronizados de {club['name']}.")
-                        
-                        # 2. LIMPIEZA DB (Atomic Cleanup usando timestamp)
-                        @retry_supabase_call
-                        def cleanup_players():
-                            return supabase.table("players").delete().eq("club_id", club_id).lt("updated_at", now).execute()
-                        
-                        clean_res = cleanup_players()
-                        if clean_res.data and len(clean_res.data) > 0:
-                            print(f"    🧹 {len(clean_res.data)} jugadores antiguos/transferidos eliminados del club en DB.")
-                            
-                            # Mostrar en el Diffs Log los que sobraron en nuestro dict comparativo
-                            for p_del in existing_dict_for_diff.values():
-                                if not club_has_diff:
-                                    diff_logger.info(f"\n--- CLUB: {club['name']} ({league['league_name']}) ---")
-                                    club_has_diff = True
-                                diff_logger.info(f"  [-] {p_del['name']} (ELIMINADO/TRANSFERIDO)")
+                        synced_count = len(res.data)
+                        print(f"    ✅ {synced_count} jugadores sincronizados de {club['name']}.")
+
+                        # 2. LIMPIEZA DB — solo si el scraper no reportó errores de fila.
+                        # Si alguna fila falló al parsearse, el jugador no estaría en el
+                        # payload aunque siga en el club. Limpiarlo sería un falso positivo.
+                        had_scrape_errors = club.get("had_scrape_errors", False)
+                        safe_to_cleanup = not had_scrape_errors
+
+                        if safe_to_cleanup:
+                            @retry_supabase_call
+                            def cleanup_players():
+                                return supabase.table("players").delete().eq("club_id", club_id).lt("updated_at", now).execute()
+
+                            clean_res = cleanup_players()
+                            if clean_res.data and len(clean_res.data) > 0:
+                                print(f"    🧹 {len(clean_res.data)} jugadores antiguos/transferidos eliminados del club en DB.")
+
+                                for p_del in existing_dict_for_diff.values():
+                                    if not club_has_diff:
+                                        diff_logger.info(f"\n--- CLUB: {club['name']} ({league['league_name']}) ---")
+                                        club_has_diff = True
+                                    diff_logger.info(f"  [-] {p_del['name']} (ELIMINADO/TRANSFERIDO)")
+                        else:
+                            print(f"    ⚠️ Limpieza omitida para {club['name']}: el scraper reportó filas con errores (jugadores pueden estar incompletos).")
+                            diff_logger.info(f"  [!] Limpieza omitida para {club['name']} — scrape tuvo errores de fila, datos en DB conservados")
                     else:
                         print(f"    ⚠️ Upsert de jugadores falló.")
                 except Exception as e:

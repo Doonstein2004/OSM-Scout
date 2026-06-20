@@ -1,8 +1,12 @@
-const CACHE_NAME = 'osm-scout-v1';
-const RUNTIME_CACHE = 'osm-runtime';
+const CACHE_VERSION = 'v3';
+const CACHE_NAME = `osm-scout-${CACHE_VERSION}`;
+const RUNTIME_CACHE = `osm-runtime-${CACHE_VERSION}`;
 
+// Only cache true static assets — never the root HTML.
+// The root HTML references hashed JS bundles; caching it causes blank screens
+// when new bundles are deployed because the old HTML points to URLs that no
+// longer exist. Always fetch HTML fresh so the browser gets the latest entry point.
 const STATIC_ASSETS = [
-  '/',
   '/manifest.json'
 ];
 
@@ -29,21 +33,21 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  
+
   if (url.origin !== location.origin) return;
-  
-  if (url.pathname.startsWith('/api/') || url.hostname.includes('supabase')) {
-    event.respondWith(staleWhileRevalidate(event.request));
-    return;
-  }
-  
+
+  // Never cache HTML documents — always fetch fresh to pick up new JS bundles.
+  const isHtml = event.request.headers.get('accept')?.includes('text/html') ||
+    url.pathname === '/' || url.pathname.endsWith('.html');
+  if (isHtml) return;
+
   if (event.request.method !== 'GET') return;
-  
+
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const fetched = fetch(event.request).then((response) => {
-        const clone = response.clone();
         if (response.ok) {
+          const clone = response.clone();
           caches.open(RUNTIME_CACHE).then((cache) => {
             cache.put(event.request, clone);
           });
@@ -54,21 +58,3 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
-
-async function staleWhileRevalidate(request) {
-  const cached = await caches.match(request);
-  const fetched = fetch(request).then((response) => {
-    if (response.ok) {
-      const clone = response.clone();
-      caches.open(RUNTIME_CACHE).then((cache) => {
-        cache.put(request, clone);
-      });
-    }
-    return response;
-  }).catch(() => null);
-  
-  return cached || fetched || new Response(JSON.stringify({ error: 'offline' }), {
-    status: 503,
-    headers: { 'Content-Type': 'application/json' }
-  });
-}
