@@ -16,18 +16,27 @@ if not diff_logger.handlers:
     diff_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
     diff_logger.addHandler(diff_handler)
 
-def retry_supabase_call(func, max_retries=3, delay=5):
+_RETRYABLE_ERRORS = [
+    "502", "503", "504",          # Bad gateway / unavailable
+    "522", "524",                  # Cloudflare timeouts (origin timed out)
+    "Connection timed out",
+    "Bad gateway",
+    "10060", "ECONNRESET", "ETIMEDOUT",
+    "JSON could not be generated", # Supabase devuelve HTML de error en vez de JSON
+]
+
+def retry_supabase_call(func, max_retries=5, delay=15):
     def wrapper(*args, **kwargs):
         for i in range(max_retries):
             try:
                 return func(*args, **kwargs)
             except Exception as e:
                 err_msg = str(e)
-                is_retryable = any(msg in err_msg for msg in ["502", "Bad gateway", "10060", "ECONNRESET", "ETIMEDOUT"])
-                
+                is_retryable = any(msg in err_msg for msg in _RETRYABLE_ERRORS)
+
                 if is_retryable and i < max_retries - 1:
-                    wait_time = delay * (i + 1) # Exponential-ish backoff
-                    print(f"  🔌 Error de red/servidor Supabase ({err_msg}). Reintentando en {wait_time}s... ({i+1}/{max_retries})")
+                    wait_time = delay * (i + 1)  # backoff: 15s, 30s, 45s, 60s
+                    print(f"  🔌 Error transitorio Supabase (intento {i+1}/{max_retries}): esperando {wait_time}s...")
                     time.sleep(wait_time)
                     continue
                 raise e

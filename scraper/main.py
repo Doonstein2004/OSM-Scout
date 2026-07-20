@@ -74,6 +74,14 @@ def parse_value_string(value_str):
         except: pass
     return value, value_str
 
+def normalize_club_name(name: str) -> str:
+    """Normaliza variantes de nombres de club para evitar duplicados en DB.
+    Agregar aliases aquí si el scraper captura un nombre inconsistente vs la BD."""
+    _ALIASES: dict[str, str] = {
+        # Ejemplo: "NombreIncorrecto": "NombreCorrecto",
+    }
+    return _ALIASES.get(name, name)
+
 def parse_player_data(page, expected_club):
     """Returns (players, had_row_errors). had_row_errors=True means at least one
     player row failed to parse — callers should skip DB cleanup to avoid
@@ -102,25 +110,43 @@ def parse_player_data(page, expected_club):
             for r in range(rows.count()):
                 row = rows.nth(r)
                 try:
-                    name_loc = row.locator("td.td-player-name span.semi-bold")
-                    if name_loc.count() == 0: continue
+                    # Leer todos los datos de la fila en un único call JS atómico.
+                    # Evita el problema de stale locators: si Playwright re-consulta el DOM
+                    # entre llamadas separadas y la tabla re-renderizó, los datos se mezclan
+                    # entre filas distintas (ej: nombre de Grealish con stats de Haaland).
+                    d = row.evaluate("""
+                        el => {
+                            const nameEl = el.querySelector('td.td-player-name span.semi-bold');
+                            if (!nameEl) return null;
+                            const tds = Array.from(el.querySelectorAll('td'));
+                            const flagEl = tds[3] ? tds[3].querySelector('span.flag-icon') : null;
+                            const valEl  = el.querySelector('td.td-price span.club-funds-amount');
+                            return {
+                                name:       nameEl.innerText.trim(),
+                                pos_detail: (tds[1] || {}).innerText?.trim() || '',
+                                age:        (tds[2] || {}).innerText?.trim() || '',
+                                nationality: flagEl ? (flagEl.getAttribute('title') || 'N/A') : 'N/A',
+                                att:        (tds[5] || {}).innerText?.trim() || '',
+                                defe:       (tds[6] || {}).innerText?.trim() || '',
+                                ovr:        (tds[7] || {}).innerText?.trim() || '',
+                                val_str:    valEl ? valEl.innerText.trim() : 'N/A',
+                            };
+                        }
+                    """)
 
-                    name = name_loc.first.inner_text(timeout=2000).strip()
-                    pos_detail = row.locator("td").nth(1).inner_text(timeout=2000).strip()
-                    age = int(row.locator("td").nth(2).inner_text(timeout=2000).strip())
+                    if not d or not d.get("name"):
+                        continue
 
-                    nat_el = row.locator("td").nth(3).locator("span.flag-icon")
-                    nationality = nat_el.first.get_attribute("title", timeout=2000) if nat_el.count() > 0 else "N/A"
-
-                    att_str = row.locator("td").nth(5).inner_text(timeout=2000).strip()
-                    att = int(att_str) if att_str.isdigit() else 0
-                    def_str = row.locator("td").nth(6).inner_text(timeout=2000).strip()
-                    defe = int(def_str) if def_str.isdigit() else 0
-                    ovr_str = row.locator("td").nth(7).inner_text(timeout=2000).strip()
-                    ovr_stat = int(ovr_str) if ovr_str.isdigit() else 0
-
-                    val_el = row.locator("td.td-price span.club-funds-amount")
-                    val_str = val_el.first.inner_text(timeout=2000).strip() if val_el.count() > 0 else "N/A"
+                    name       = d["name"]
+                    pos_detail = d["pos_detail"]
+                    age        = int(d["age"]) if d["age"].isdigit() else None
+                    if age is None:
+                        continue  # fila de cabecera o vacía
+                    nationality = d["nationality"]
+                    att      = int(d["att"])  if d["att"].isdigit()  else 0
+                    defe     = int(d["defe"]) if d["defe"].isdigit() else 0
+                    ovr_stat = int(d["ovr"])  if d["ovr"].isdigit()  else 0
+                    val_str  = d["val_str"]
                     val_amount, _ = parse_value_string(val_str)
 
                     final_overall = att if "Forward" in category else ovr_stat if "Midfielder" in category else defe
@@ -265,6 +291,9 @@ def scrape_osm(email):
                             if not players:
                                 raise Exception("No se pudieron extraer jugadores.")
 
+                            # Usar siempre club_target como nombre canónico en DB.
+                            # El h2 de OSM puede mostrar nombres abreviados (ej: 'Paris' para
+                            # 'Paris Saint-Germain'), lo que crearía duplicados en Supabase.
                             club_data = {
                                 "name": club_name, "objective": objective, "squad_value": squad_val_str,
                                 "fixed_income": fixed_income_str, "players": players,
@@ -444,6 +473,7 @@ def scrape_world_cup(page):
                 if not players:
                     raise Exception("Sin jugadores.")
 
+                # Usar club_target como nombre canónico — el h2 puede ser abreviado.
                 club_data = {
                     "name": club_target, "objective": objective,
                     "squad_value": squad_val_str, "fixed_income": fixed_income_str,
