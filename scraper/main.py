@@ -224,10 +224,24 @@ def scrape_osm(email):
                     elif "inc" in txt or "funds" in txt: header_map["inc"] = h
 
                 # Paso 1: Obtener la lista de nombres de todos los clubes primero
+                # Usamos evaluate() con regex para matchear SOLO 'text: name' y no
+                # 'text: nameShort', 'text: nameInitials', etc. que comparten el prefijo.
+                _NAME_BIND_JS = """
+                    el => {
+                        const spans = Array.from(el.querySelectorAll('span[data-bind]'));
+                        const span = spans.find(s => {
+                            const b = s.getAttribute('data-bind') || '';
+                            // Buscar 'text: name' seguido de coma, espacio o fin de string
+                            // para evitar matchear 'text: nameShort', 'text: nameInitials', etc.
+                            return /(?:^|[,]\\s*)text:\\s*name(?:\\s*[,]|$)/.test(b);
+                        });
+                        return span ? span.innerText.trim() : null;
+                    }
+                """
                 club_names = []
                 rows_loc = page.locator("table#leaguetypes-table tbody tr.clickable")
                 for c_idx in range(rows_loc.count()):
-                    name = rows_loc.nth(c_idx).locator("td").nth(header_map["club"]).locator("span[data-bind*='text: name']").inner_text().strip()
+                    name = rows_loc.nth(c_idx).locator("td").nth(header_map["club"]).evaluate(_NAME_BIND_JS)
                     if name:
                         club_names.append(name)
                 
@@ -244,14 +258,14 @@ def scrape_osm(email):
                             # Buscar la fila que contiene exactamente este nombre de club
                             # Usamos comillas dobles y escape para nombres con apóstrofes
                             safe_target = club_target.replace('"', '\\"')
-                            current_club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:has-text(\"{safe_target}\"))").first
+                            current_club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:text-is(\"{safe_target}\"))").first
                             
                             if not current_club_row.is_visible(timeout=5000):
                                 logger.warning(f"    ⚠️ No se visualiza la fila de {club_target}. Recargando liga...")
                                 if not safe_navigate(page, league_url, "table#leaguetypes-table"):
                                     raise Exception("No se pudo recargar la liga.")
                                 handle_popups(page)
-                                current_club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:has-text(\"{safe_target}\"))").first
+                                current_club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:text-is(\"{safe_target}\"))").first
 
                             current_club_row.scroll_into_view_if_needed()
                             tds = current_club_row.locator("td")
@@ -291,9 +305,18 @@ def scrape_osm(email):
                             if not players:
                                 raise Exception("No se pudieron extraer jugadores.")
 
-                            # Usar siempre club_target como nombre canónico en DB.
-                            # El h2 de OSM puede mostrar nombres abreviados (ej: 'Paris' para
-                            # 'Paris Saint-Germain'), lo que crearía duplicados en Supabase.
+                            # Leer el h2 de la página del equipo y usarlo como nombre
+                            # canónico en DB SOLO si club_name es una versión abreviada:
+                            # club_name in h2_name  →  "Paris" in "Paris Saint-Germain"  ✓
+                            # club_name == h2_name  →  "Manchester City" == "Manchester City" ✓
+                            # h2_name abreviado     →  "Manchester City" in "Man City"   ✗ (no aplica)
+                            try:
+                                h2_text = page.locator('h2[data-bind="text: name"]').inner_text(timeout=5000).strip()
+                                if h2_text and club_name in h2_text:
+                                    club_name = h2_text
+                            except Exception:
+                                pass  # Mantener club_name original si falla la lectura
+
                             club_data = {
                                 "name": club_name, "objective": objective, "squad_value": squad_val_str,
                                 "fixed_income": fixed_income_str, "players": players,
@@ -427,10 +450,10 @@ def scrape_world_cup(page):
         for attempt in range(max_retries):
             try:
                 safe_target = club_target.replace('"', '\\"')
-                club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:has-text(\"{safe_target}\"))").first
+                club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:text-is(\"{safe_target}\"))").first
                 if not club_row.is_visible(timeout=5000):
                     safe_navigate(page, league_url, "table#leaguetypes-table")
-                    club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:has-text(\"{safe_target}\"))").first
+                    club_row = page.locator(f"table#leaguetypes-table tbody tr.clickable:has(span[data-bind*='text: name']:text-is(\"{safe_target}\"))").first
 
                 club_row.scroll_into_view_if_needed()
                 tds = club_row.locator("td")
