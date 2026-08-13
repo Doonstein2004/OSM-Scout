@@ -1,16 +1,96 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Button, Spinner } from 'heroui-native';
-import Animated, { FadeInUp, LinearTransition } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import { findOptimalCombination, discoverCombosForPositions } from '../lib/scouter';
 import { getFlag } from '../lib/flags';
 import { useStore } from '../context/StoreContext';
+import { useSubscription } from '../context/SubscriptionContext';
+import { Analytics } from '../lib/analytics';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence, FadeInUp, LinearTransition } from 'react-native-reanimated';
+
+function TrendingSection() {
+    const { isPro, showPaywall } = useSubscription();
+    const [trending, setTrending] = React.useState<any[]>([]);
+    const { t } = useTranslation();
+
+    const pulse = useSharedValue(1);
+
+    const MOCK_TRENDING = [
+        { player_name: 'Lamine Yamal', search_count: 150 },
+        { player_name: 'Viktor Gyökeres', search_count: 120 },
+        { player_name: 'Endrick', search_count: 90 },
+        { player_name: 'Estêvão', search_count: 85 },
+        { player_name: 'Kvaratskhelia', search_count: 70 },
+    ];
+
+    React.useEffect(() => {
+        pulse.value = withRepeat(
+            withSequence(
+                withTiming(1.2, { duration: 1000 }),
+                withTiming(1, { duration: 1000 })
+            ),
+            -1,
+            true
+        );
+
+        const fetchTrending = async () => {
+            try {
+                const { data, error } = await supabase.rpc('get_trending_players');
+                if (!error && data && data.length > 0) {
+                    setTrending(data);
+                } else {
+                    if (__DEV__) {
+                        console.log('[Trending] No data or error, using mocks');
+                        setTrending(MOCK_TRENDING);
+                    }
+                }
+            } catch (e) {
+                if (__DEV__) setTrending(MOCK_TRENDING);
+            }
+        };
+        fetchTrending();
+    }, []);
+
+    if (trending.length === 0) return null;
+
+    return (
+        <View className="mb-8">
+            <View className="flex-row items-center gap-2 mb-3">
+                <Text className="text-amber-400 text-xs font-black uppercase tracking-tighter">🔥 Trending Scouts</Text>
+                <View className="h-[1px] flex-1 bg-amber-400/20" />
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row gap-3">
+                {trending.map((p, i) => (
+                    <TouchableOpacity
+                        key={i}
+                        onPress={() => !isPro && showPaywall('trending')}
+                        className="bg-slate-900 border border-white/5 rounded-2xl px-4 py-3 mr-3 items-center min-w-[120px]"
+                    >
+                        <Text className="text-slate-500 text-[10px] font-bold mb-1">#{i + 1} TOP</Text>
+                        <Text className={`text-white font-black text-sm ${!isPro ? 'opacity-20' : ''}`}>
+                            {isPro ? p.player_name : '••••••••'}
+                        </Text>
+                        {!isPro && (
+                            <Animated.Text
+                                style={[useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }))]}
+                                className="absolute text-[10px] text-amber-500 font-bold bottom-2"
+                            >
+                                PRO 🔒
+                            </Animated.Text>
+                        )}
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+        </View>
+    );
+}
 
 export default function SmartScreen() {
     const { t } = useTranslation();
+    const { isPro, showPaywall } = useSubscription();
     const {
         targetPlayers,
         setTargetPlayers,
@@ -33,6 +113,8 @@ export default function SmartScreen() {
         getEstMultiplier,
         getBlockEstimate
     } = useStore();
+
+    const canSaveFilter = isPro || savedFilters.length < 2;
 
     const [combinationResult, setCombinationResult] = useState<any>(null);
     const [generatedTrips, setGeneratedTrips] = useState<any[]>([]);
@@ -96,6 +178,9 @@ export default function SmartScreen() {
         setCombinationResult(null);
         setCalculating(true);
         try {
+            // Track each player in the target list for community trends
+            targetPlayers.forEach(p => Analytics.trackSmartAnalysis(p.name));
+
             const res = await findOptimalCombination(supabase, targetPlayers);
             setCombinationResult(res);
         } catch (e) {
@@ -160,10 +245,95 @@ export default function SmartScreen() {
         </View>
     );
 
+    // Track upsell view if not pro
+    React.useEffect(() => {
+        if (!isPro) {
+            Analytics.trackUpsellView('smart');
+        }
+    }, [isPro]);
+
+    // ── PRO gate: render upsell screen for free users ────────────────────
+    if (!isPro) {
+
+        return (
+            <ScrollView
+                className="flex-1 w-full bg-[#020617]"
+                contentContainerStyle={{ padding: 24, paddingBottom: 80 }}
+                showsVerticalScrollIndicator={false}
+            >
+                {/* Hero */}
+                <View className="items-center pt-6 pb-8">
+                    <View className="w-24 h-24 rounded-[32px] bg-emerald-500/10 border border-emerald-500/20 items-center justify-center mb-5">
+                        <Text style={{ fontSize: 44 }}>🧠</Text>
+                    </View>
+                    <Text className="text-white font-black text-2xl tracking-tighter mb-2 text-center uppercase">
+                        SMART <Text className="text-emerald-400">Analysis</Text>
+                    </Text>
+                    <Text className="text-slate-400 text-sm text-center leading-relaxed px-4">
+                        {t('smart_upsell_desc')}
+                    </Text>
+                </View>
+
+                {/* Feature preview cards */}
+                {[
+                    {
+                        icon: '🎯',
+                        titleKey: 'smart_upsell_mode_player_title',
+                        descKey: 'smart_upsell_mode_player_desc',
+                        color: 'border-emerald-500/30 bg-emerald-500/5',
+                    },
+                    {
+                        icon: '⚡',
+                        titleKey: 'smart_upsell_mode_pos_title',
+                        descKey: 'smart_upsell_mode_pos_desc',
+                        color: 'border-indigo-500/30 bg-indigo-500/5',
+                    },
+                    {
+                        icon: '💡',
+                        titleKey: 'smart_upsell_magic_title',
+                        descKey: 'smart_upsell_magic_desc',
+                        color: 'border-amber-500/30 bg-amber-500/5',
+                    },
+                ].map(f => (
+                    <View key={f.titleKey} className={`border rounded-3xl p-5 mb-4 ${f.color}`}>
+                        <View className="flex-row items-center gap-3 mb-2">
+                            <Text style={{ fontSize: 26 }}>{f.icon}</Text>
+                            <Text className="text-white font-black text-base">{t(f.titleKey)}</Text>
+                        </View>
+                        <Text className="text-slate-400 text-sm leading-relaxed">{t(f.descKey)}</Text>
+                    </View>
+                ))}
+
+                {/* CTA */}
+                <TouchableOpacity
+                    onPress={() => showPaywall(t('smart_upsell_title') + '\n' + t('smart_upsell_desc'))}
+                    activeOpacity={0.85}
+                    className="mt-2"
+                >
+                    <View className="bg-emerald-500 rounded-3xl h-14 items-center justify-center shadow-xl shadow-emerald-500/30">
+                        <Text className="text-black font-black tracking-widest uppercase text-sm">{t('smart_unlock_cta')}</Text>
+                    </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    onPress={() => showPaywall()}
+                    className="mt-3 items-center"
+                >
+                    <Text className="text-slate-500 text-xs">{t('view_plans')}</Text>
+                </TouchableOpacity>
+            </ScrollView>
+        );
+    }
+
     return (
         <ScrollView className="px-6 py-4 flex-1 w-full bg-[#020617]" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-            <Text className="text-3xl font-black text-white mb-2 uppercase">{t('score')}</Text>
-            <Text className="text-slate-400 text-sm mb-4 leading-relaxed">{t('score_desc')}</Text>
+            {/* Trending Section (PRO only) */}
+            <TrendingSection />
+
+            <View className="flex-row items-center justify-between mb-4">
+                <Text className="text-3xl font-black text-white mb-2 uppercase">{t('score')}</Text>
+                <Text className="text-slate-400 text-sm mb-4 leading-relaxed">{t('score_desc')}</Text>
+            </View>
 
             <View className="flex-row bg-white/5 p-1 rounded-2xl mb-6">
                 <TouchableOpacity
@@ -228,8 +398,19 @@ export default function SmartScreen() {
                                             <View className="flex-row justify-between items-center mb-3">
                                                 <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest">{t('magic_filters')}</Text>
                                                 {combinationResult.probability > 0 && (
-                                                    <TouchableOpacity onPress={() => saveSmartFilter(combinationResult)} className="bg-amber-500/20 px-3 py-1.5 rounded-xl border border-amber-500/30">
-                                                        <Text className="text-amber-400 font-bold text-[10px]">💾 {t('save_filter')}</Text>
+                                                    <TouchableOpacity
+                                                        onPress={() => canSaveFilter
+                                                            ? saveSmartFilter(combinationResult)
+                                                            : showPaywall('Has alcanzado el límite de filtros guardados.\nActualiza a PRO para guardar filtros ilimitados.')
+                                                        }
+                                                        className={`px-3 py-1.5 rounded-xl border ${canSaveFilter
+                                                            ? 'bg-amber-500/20 border-amber-500/30'
+                                                            : 'bg-white/5 border-white/10 opacity-50'
+                                                            }`}
+                                                    >
+                                                        <Text className={`font-bold text-[10px] ${canSaveFilter ? 'text-amber-400' : 'text-slate-500'}`}>
+                                                            {canSaveFilter ? '💾' : '🔒'} {t('save_filter')}
+                                                        </Text>
                                                     </TouchableOpacity>
                                                 )}
                                             </View>
@@ -254,7 +435,7 @@ export default function SmartScreen() {
                                                     </View>
                                                 )}
                                             </View>
-                                            
+
                                             {combinationResult.probability === 0 && combinationResult.incompatible ? (
                                                 <Text className="text-red-200 font-medium text-xs leading-relaxed mb-1">
                                                     {t('incompatible_desc', 'Los jugadores seleccionados no son compatibles con un mismo filtro estricto.')}
@@ -265,14 +446,14 @@ export default function SmartScreen() {
                                                         const total = (combinationResult.matchingPlayers?.length || 0) + (combinationResult.noiseCount || 0);
                                                         const guaranteed = Math.max(0, 3 - (combinationResult.noiseCount || 0));
                                                         const targetsCount = combinationResult.matchingPlayers?.length || 0;
-                                                        
+
                                                         return (
                                                             <View className="mb-4">
                                                                 <Text className="text-white font-bold text-sm mb-1">
-                                                                    {guaranteed >= targetsCount 
-                                                                        ? `✅ ¡Combinación Perfecta!` 
-                                                                        : guaranteed > 0 
-                                                                            ? `🔥 ¡Gran Oportunidad!` 
+                                                                    {guaranteed >= targetsCount
+                                                                        ? `✅ ¡Combinación Perfecta!`
+                                                                        : guaranteed > 0
+                                                                            ? `🔥 ¡Gran Oportunidad!`
                                                                             : `⚖️ Filtro Competido`}
                                                                 </Text>
                                                                 <Text className="text-slate-300 text-xs leading-relaxed">
@@ -286,7 +467,7 @@ export default function SmartScreen() {
                                                             </View>
                                                         );
                                                     })()}
-                                                    
+
                                                     <View className="gap-1">
                                                         {combinationResult.matchingPlayers && combinationResult.matchingPlayers.map((p: any) => (
                                                             <PlayerItem key={p.id} p={p} isTarget={!!targetPlayers.find(t => t.id === p.id)} />
@@ -320,7 +501,7 @@ export default function SmartScreen() {
                             <Text className="text-red-400 font-black text-[10px] uppercase tracking-widest">🧹 {t('clean')}</Text>
                         </TouchableOpacity>
                     </View>
-                    
+
                     <View className="flex-row gap-2 mb-4 flex-wrap">
                         <TouchableOpacity
                             className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2"
@@ -387,12 +568,25 @@ export default function SmartScreen() {
                                     <View className="flex-row justify-between items-center mb-3">
                                         <View className="flex-row items-center gap-3">
                                             <Text className="text-white font-black uppercase text-xs">{t('options')} #{tIdx + 1}</Text>
-                                            <TouchableOpacity onPress={() => saveSmartFilter(trip)} className="bg-amber-500/20 px-2 py-1 rounded-lg border border-amber-500/30">
-                                                <Text className="text-amber-400 font-bold text-[10px]">💾 {t('save_filter')}</Text>
+                                            <TouchableOpacity
+                                                onPress={() => canSaveFilter
+                                                    ? saveSmartFilter(trip)
+                                                    : showPaywall('Has alcanzado el límite de filtros guardados.\nActualiza a PRO para guardar filtros ilimitados.')
+                                                }
+                                                className={`px-2 py-1 rounded-lg border ${canSaveFilter
+                                                    ? 'bg-amber-500/20 border-amber-500/30'
+                                                    : 'bg-white/5 border-white/10 opacity-50'
+                                                    }`}
+                                            >
+                                                <Text className={`font-bold text-[10px] ${canSaveFilter ? 'text-amber-400' : 'text-slate-500'}`}>
+                                                    {canSaveFilter ? '💾' : '🔒'} {t('save_filter')}
+                                                </Text>
                                             </TouchableOpacity>
                                         </View>
-                                        <View className={`px-2 py-0.5 rounded ${trip.probability >= 50 ? 'bg-emerald-500' : trip.probability >= 15 ? 'bg-amber-400' : 'bg-slate-700'}`}>
-                                            <Text className={`font-black text-[10px] ${trip.probability >= 15 ? 'text-black' : 'text-white'}`}>{Math.round(trip.probability)}% PROB</Text>
+                                        <View className={`px-2 py-0.5 rounded-full ${trip.probability >= 70 ? 'bg-emerald-500' : trip.probability >= 30 ? 'bg-amber-400' : 'bg-rose-500'}`}>
+                                            <Text className={`font-black text-[9px] ${trip.probability >= 30 ? 'text-black' : 'text-white'}`}>
+                                                {trip.probability >= 70 ? '🎯 ALTA PRECISION' : trip.probability >= 30 ? '⚖️ RIESGO MEDIO' : '⚠️ RIESGO ALTO'}
+                                            </Text>
                                         </View>
                                     </View>
                                     <View className="flex-row flex-wrap gap-2 mb-4">
@@ -419,14 +613,14 @@ export default function SmartScreen() {
                                         {(() => {
                                             const guaranteed = Math.max(0, 3 - (trip.noiseCount || 0));
                                             const targetsCount = trip.matchingPlayers?.length || 0;
-                                            
+
                                             return (
                                                 <View className="mb-4">
                                                     <Text className="text-white font-bold text-[10px] mb-1">
-                                                        {guaranteed >= targetsCount 
-                                                            ? `✅ ¡Combinación Perfecta!` 
-                                                            : guaranteed > 0 
-                                                                ? `🔥 ¡Gran Oportunidad!` 
+                                                        {guaranteed >= targetsCount
+                                                            ? `✅ ¡Combinación Perfecta!`
+                                                            : guaranteed > 0
+                                                                ? `🔥 ¡Gran Oportunidad!`
                                                                 : `⚖️ Filtro Competido`}
                                                     </Text>
                                                     <Text className="text-slate-400 text-[10px] leading-relaxed">
@@ -462,8 +656,8 @@ export default function SmartScreen() {
 
                     {!!targetPositions.length && !generatedTrips.length && !calculating && (
                         <View className="py-20 opacity-30 items-center">
-                             <Text className="text-4xl mb-2">🔎</Text>
-                             <Text className="text-white text-center italic text-xs">{t('mining_desc')}</Text>
+                            <Text className="text-4xl mb-2">🔎</Text>
+                            <Text className="text-white text-center italic text-xs">{t('mining_desc')}</Text>
                         </View>
                     )}
                 </View>

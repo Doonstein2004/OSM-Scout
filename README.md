@@ -14,9 +14,6 @@ Esta es la aplicación móvil de **OSM-Scout**, optimizada para scouting intelig
 - **Detección de Red**: Utiliza `@react-native-community/netinfo` para detectar cambios en la conectividad en tiempo real.
 - **UI Adaptativa**: Banner informativo cuando la app está sin conexión y desactivación inteligente de búsquedas manuales hacia el servidor, redirigiendo al usuario a los datos cacheados.
 
-### 🔒 Seguridad
-- **Remoción de Secretos**: Se ha eliminado `google-service-account-key.json` de la carpeta cliente.
-- **Protección de Entorno**: `.gitignore` actualizado para ignorar archivos `.env` y llaves de servicio de Google.
 
 ## Tecnologías Utilizadas
 - **Core**: React Native (Expo)

@@ -29,6 +29,7 @@ import LeaguesScreen from './screens/LeaguesScreen';
 import { useStore } from './context/StoreContext';
 import SmartScreen from './screens/SmartScreen';
 import ScoutScreen from './screens/ScoutScreen';
+import { useSubscription } from './context/SubscriptionContext';
 
 export default function MainApp() {
     const { 
@@ -70,20 +71,19 @@ t, i18n } = useTranslation();
         smartAgeRange, setSmartAgeRange,
         smartQualityRange, setSmartQualityRange,
         savedFilters, setSavedFilters,
-nationalities,
-setNationalities,
-leagues,
-setLeagues,
-clubs,
-setClubs,
-selectModal,
-setSelectModal
-} = useStore();
+        nationalities, setNationalities,
+        leagues, setLeagues,
+        clubs, setClubs,
+        selectModal, setSelectModal,
+        isTourActive, setIsTourActive,
+        tourStep, setTourStep,
+        startTour
+    } = useStore();
+
+    const { paywallVisible, showPaywall, isPro } = useSubscription();
 
     // Context doesn't need to save these internals anymore
     const PAGE_SIZE = 50;
-    const [isTourActive, setIsTourActive] = useState(false);
-    const [tourStep, setTourStep] = useState(0);
 
 
 
@@ -181,11 +181,15 @@ setSelectModal
 
                     <View className="px-6 pt-6 pb-4 border-b border-white/10 flex-row justify-between items-center bg-slate-950">
                         <View className="flex-1 mr-4">
-                            <Text className="text-2xl font-black text-white tracking-tighter" numberOfLines={1} adjustsFontSizeToFit>OSM SCOUT <Text className="text-emerald-400">PRO</Text></Text>
+                            <TouchableOpacity onPress={() => showPaywall('manage')} activeOpacity={0.7}>
+                                <Text className="text-2xl font-black text-white tracking-tighter" numberOfLines={1} adjustsFontSizeToFit>
+                                    OSM SCOUT <Text className={isPro ? "text-emerald-400" : "text-slate-600"}>{isPro ? 'PRO' : 'FREE'}</Text>
+                                </Text>
+                            </TouchableOpacity>
                             <Text className="text-slate-400 text-[10px] font-black uppercase tracking-[2px]" numberOfLines={1}>{t('smart_scout_desc')}</Text>
                         </View>
                         <View className="flex-row gap-2">
-                            <TouchableOpacity onPress={() => { setIsTourActive(true); setTourStep(0); }}>
+                            <TouchableOpacity onPress={startTour}>
                                 <View className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/20 items-center justify-center">
                                     <Text className="text-lg">❓</Text>
                                 </View>
@@ -301,8 +305,8 @@ setSelectModal
 
             </HeroUINativeProvider>
 
-            {/* QUICK TOUR OVERLAY */}
-            {isTourActive && (
+            {/* QUICK TOUR OVERLAY - Solo si el paywall no está visible */}
+            {isTourActive && !paywallVisible && (
                 <View className="absolute inset-0 bg-black/70 z-[9999] justify-center p-8">
                     <Animated.View entering={FadeInUp} className="bg-slate-900 border border-white/10 rounded-[40px] p-8 items-center shadow-2xl shadow-emerald-500/20">
                         <View className="w-24 h-24 rounded-full bg-emerald-500/10 items-center justify-center mb-6">

@@ -6,12 +6,15 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '../context/StoreContext';
 import { supabase } from '../lib/supabase';
 import { toNatStem, getFlag } from '../lib/flags';
+import { useSubscription } from '../context/SubscriptionContext';
+import { Analytics } from '../lib/analytics';
 
 
 
 export default function FantasyScreen() {
     const { t } = useTranslation();
     const { nationalities, openSelector, formatPrice } = useStore();
+    const { isPro, showPaywall } = useSubscription();
 
     const [fantasyBudget, setFantasyBudget] = useState(150000000);
     const [fantasySize, setFantasySize] = useState(15);
@@ -126,6 +129,91 @@ export default function FantasyScreen() {
             setFantasyLoading(false);
         }
     };
+
+    // Track upsell view
+    React.useEffect(() => {
+        if (!isPro) {
+            Analytics.trackUpsellView('fantasy');
+        }
+    }, [isPro]);
+
+    // ── PRO gate: render upsell screen for free users ────────────────────
+    if (!isPro) {
+        return (
+            <ScrollView
+                className="flex-1 w-full bg-[#020617]"
+                contentContainerStyle={{ padding: 24, paddingBottom: 80 }}
+                showsVerticalScrollIndicator={false}
+            >
+                {/* Hero */}
+                <View className="items-center pt-6 pb-8">
+                    <View className="w-24 h-24 rounded-[32px] bg-fuchsia-500/10 border border-fuchsia-500/20 items-center justify-center mb-5">
+                        <Text style={{ fontSize: 44 }}>⚽</Text>
+                    </View>
+                    <Text className="text-white font-black text-2xl tracking-tighter mb-2 text-center uppercase">
+                        Fantasy <Text className="text-fuchsia-400">Optimizer</Text>
+                    </Text>
+                    <Text className="text-slate-400 text-sm text-center leading-relaxed px-4">
+                        {t('fantasy_upsell_desc')}
+                    </Text>
+                </View>
+
+                {/* Feature preview cards */}
+                {[
+                    {
+                        icon: '💰',
+                        titleKey: 'fantasy_upsell_budget_title',
+                        descKey: 'fantasy_upsell_budget_desc',
+                        color: 'border-emerald-500/30 bg-emerald-500/5',
+                    },
+                    {
+                        icon: '🏆',
+                        titleKey: 'fantasy_upsell_pos_title',
+                        descKey: 'fantasy_upsell_pos_desc',
+                        color: 'border-fuchsia-500/30 bg-fuchsia-500/5',
+                    },
+                    {
+                        icon: '🌟',
+                        titleKey: 'fantasy_upsell_age_title',
+                        descKey: 'fantasy_upsell_age_desc',
+                        color: 'border-amber-500/30 bg-amber-500/5',
+                    },
+                    {
+                        icon: '🇳🇭',
+                        titleKey: 'fantasy_upsell_nat_title',
+                        descKey: 'fantasy_upsell_nat_desc',
+                        color: 'border-indigo-500/30 bg-indigo-500/5',
+                    },
+                ].map(f => (
+                    <View key={f.titleKey} className={`border rounded-3xl p-5 mb-4 ${f.color}`}>
+                        <View className="flex-row items-center gap-3 mb-2">
+                            <Text style={{ fontSize: 26 }}>{f.icon}</Text>
+                            <Text className="text-white font-black text-base">{t(f.titleKey)}</Text>
+                        </View>
+                        <Text className="text-slate-400 text-sm leading-relaxed">{t(f.descKey)}</Text>
+                    </View>
+                ))}
+
+                {/* CTA */}
+                <TouchableOpacity
+                    onPress={() => showPaywall(t('fantasy_upsell_title') + '\n' + t('fantasy_upsell_desc'))}
+                    activeOpacity={0.85}
+                    className="mt-2"
+                >
+                    <View className="bg-fuchsia-500 rounded-3xl h-14 items-center justify-center shadow-xl shadow-fuchsia-500/30">
+                        <Text className="text-white font-black tracking-widest uppercase text-sm">{t('fantasy_unlock_cta')}</Text>
+                    </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    onPress={() => showPaywall()}
+                    className="mt-3 items-center"
+                >
+                    <Text className="text-slate-500 text-xs">{t('view_plans')}</Text>
+                </TouchableOpacity>
+            </ScrollView>
+        );
+    }
 
     return (
         <ScrollView className="px-6 py-4 flex-1 w-full bg-[#020617]" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>

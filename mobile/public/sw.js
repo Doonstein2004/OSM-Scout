@@ -1,12 +1,8 @@
-const CACHE_VERSION = 'v3';
-const CACHE_NAME = `osm-scout-${CACHE_VERSION}`;
-const RUNTIME_CACHE = `osm-runtime-${CACHE_VERSION}`;
+const CACHE_NAME = 'osm-scout-v1';
+const RUNTIME_CACHE = 'osm-runtime';
 
-// Only cache true static assets — never the root HTML.
-// The root HTML references hashed JS bundles; caching it causes blank screens
-// when new bundles are deployed because the old HTML points to URLs that no
-// longer exist. Always fetch HTML fresh so the browser gets the latest entry point.
 const STATIC_ASSETS = [
+  '/',
   '/manifest.json'
 ];
 
@@ -33,28 +29,66 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-
-  if (url.origin !== location.origin) return;
-
-  // Never cache HTML documents — always fetch fresh to pick up new JS bundles.
-  const isHtml = event.request.headers.get('accept')?.includes('text/html') ||
-    url.pathname === '/' || url.pathname.endsWith('.html');
-  if (isHtml) return;
-
+  
+  // Skip cross-origin requests (Stripe, RevenueCat, etc.)
+  if (url.origin !== location.origin || url.hostname.includes('revenuecat.com') || url.hostname.includes('stripe.com')) return;
+  
+  // Skip non-GET requests
   if (event.request.method !== 'GET') return;
 
+  if (url.pathname.startsWith('/api/') || url.hostname.includes('supabase')) {
+    event.respondWith(staleWhileRevalidate(event.request));
+    return;
+  }
+  
   event.respondWith(
     caches.match(event.request).then((cached) => {
-      const fetched = fetch(event.request).then((response) => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(RUNTIME_CACHE).then((cache) => {
-            cache.put(event.request, clone);
+      if (cached) return cached;
+
+      return fetch(event.request)
+        .then((response) => {
+          if (response && response.ok) {
+            const clone = response.clone();
+            caches.open(RUNTIME_CACHE).then((cache) => {
+              cache.put(event.request, clone);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          return new Response(JSON.stringify({ error: 'offline' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
           });
-        }
-        return response;
-      }).catch(() => cached);
-      return cached || fetched;
+        });
     })
   );
 });
+
+async function staleWhileRevalidate(request) {
+  const cached = await caches.match(request);
+  
+  const fetchedPromise = fetch(request)
+    .then((response) => {
+      if (response && response.ok) {
+        const clone = response.clone();
+        caches.open(RUNTIME_CACHE).then((cache) => {
+          cache.put(request, clone);
+        });
+      }
+      return response;
+    })
+    .catch(() => null);
+
+  if (cached) {
+    return cached;
+  }
+
+  const response = await fetchedPromise;
+  if (response) return response;
+
+  return new Response(JSON.stringify({ error: 'offline' }), {
+    status: 503,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}

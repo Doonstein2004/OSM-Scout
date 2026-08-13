@@ -3,6 +3,7 @@ import 'react-native-url-polyfill/auto';
 import { inject } from '@vercel/analytics';
 import '../lib/i18n';
 import { Stack } from 'expo-router';
+import { useEffect } from 'react';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { StoreProvider } from '../context/StoreContext';
 import { HeroUINativeProvider } from 'heroui-native';
@@ -11,12 +12,13 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useInitializeData } from '../hooks/useInitializeData';
 import { useServiceWorker } from '../hooks/useServiceWorker';
+import { SubscriptionProvider } from '../context/SubscriptionContext';
+import PaywallModal from '../components/PaywallModal';
+import SuccessModal from '../components/SuccessModal';
 import { Platform, View } from 'react-native';
+import { initializePurchases } from '../lib/purchases';
 import '../global.css';
 
-if (Platform.OS === 'web') {
-  inject({ mode: 'production' });
-}
 
 export const metadata = {
   title: 'OSM Scout Pro | Football Scout Manager',
@@ -39,41 +41,61 @@ export const metadata = {
 
 function AppInitializer({ children }: { children: React.ReactNode }) {
   useInitializeData();
+
+  useEffect(() => {
+    const init = async () => {
+      const { getOrCreateUserId } = await import('../lib/supabase');
+      const userId = await getOrCreateUserId();
+      await initializePurchases(userId);
+    };
+    init();
+  }, []);
+
   return <>{children}</>;
 }
 
 export default function RootLayout() {
   useServiceWorker();
   
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      inject({ mode: 'production' });
+    }
+  }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000000' }}>
       <SafeAreaProvider>
       <View style={{
         flex: 1, 
         width: '100%', 
-        maxWidth: 500, 
+        maxWidth: 900, 
         alignSelf: 'center', 
         backgroundColor: '#020617',
         borderLeftWidth: 1,
         borderRightWidth: 1,
         borderColor: 'rgba(255,255,255,0.05)',
-        // @ts-ignore - Shadow properties for web/native
+        // @ts-ignore
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.5,
-        shadowRadius: 20,
+        shadowRadius: 40,
         elevation: 10,
       }}>
         <ErrorBoundary>
           <StoreProvider>
-            <AppInitializer>
-              <HeroUINativeProvider>
-                <GlobalSelector />
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="(tabs)" />
-                </Stack>
-              </HeroUINativeProvider>
-            </AppInitializer>
+            <SubscriptionProvider>
+              <AppInitializer>
+                <HeroUINativeProvider>
+                  <GlobalSelector />
+                  <PaywallModal />
+                  <SuccessModal />
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="(tabs)" />
+                  </Stack>
+                </HeroUINativeProvider>
+              </AppInitializer>
+            </SubscriptionProvider>
           </StoreProvider>
         </ErrorBoundary>
       </View>

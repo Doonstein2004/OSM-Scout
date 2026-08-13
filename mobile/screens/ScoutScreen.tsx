@@ -5,11 +5,13 @@ import Animated, { FadeInUp, LinearTransition } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 import { getFlag, toNatStem } from '../lib/flags';
+import { Analytics } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../context/StoreContext';
 import { ScoutSkeleton } from '../components/ScoutSkeleton';
 import { getCachedLastSearch, setCachedLastSearch } from '../lib/cache';
 import { useNetworkStatus } from '../lib/useNetworkStatus';
+import { useSubscription } from '../context/SubscriptionContext';
 import { memo } from 'react';
 
 const PlayerCard = memo(({ player, isTarget, onToggleTarget, formatPrice, getEstMultiplier, t }: any) => {
@@ -101,8 +103,12 @@ export default function ScoutScreen() {
         filterClub, setFilterClub,
         targetPlayers, setTargetPlayers,
         savedFilters, setSavedFilters,
-nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
+        nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
     } = useStore();
+
+    const { canSearch, incrementSearchCount, showPaywall, isPro, dailySearchesUsed, limits } = useSubscription();
+
+    const canSaveFilter = isPro || limits.savedFilters === -1 || savedFilters.length < limits.savedFilters;
 
     const PAGE_SIZE = 50;
 
@@ -133,7 +139,23 @@ nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
 
     async function fetchPlayers(targetPage = page, isReset = false) {
         if (!isOnline) { Alert.alert('Sin conexión', 'Está viendo resultados en caché.'); return; }
+        
+        if (isReset) {
+            if (!canSearch) {
+                Analytics.trackLimitReached('searches');
+                showPaywall(t('paywall_reason_search_limit', { count: limits.dailySearches }));
+                return;
+            }
+            Analytics.trackSearch({ sortBy, sortAscending, filterPos, filterAge, filterQuality });
+        }
+
         if ((loading || !hasMore) && !isReset) return;
+
+        // ── Freemium gate ────────────────────────────────────────────────
+        if (!canSearch) {
+            showPaywall(t('paywall_reason_search_limit', { count: limits.dailySearches }));
+            return;
+        }
 
         setLoading(true);
         try {
@@ -206,6 +228,9 @@ nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
                 setHasMore(mappedData.length === PAGE_SIZE);
                 setPage(targetPage + 1);
 
+                // Increment free search counter
+                if (isReset) await incrementSearchCount();
+
                 // Cache first page of results for offline access
                 if (isReset || targetPage === 0) {
                     const filterDesc = [
@@ -237,6 +262,11 @@ nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
     };
 
     const saveCurrentFilter = async () => {
+        // ── Freemium gate for saved filters
+        if (!canSaveFilter) {
+            showPaywall(t('paywall_reason_filter_limit', { count: limits.savedFilters }));
+            return;
+        }
         const parts = [];
         if (filterPos.length) parts.push(filterPos.map(p => t(p)).join(', '));
         if (filterDetailedPos.length) parts.push(filterDetailedPos.map(p => t(p)).join(', '));
@@ -437,8 +467,12 @@ nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
                 <View className="flex-row gap-2 mt-2">
                     {!!(filterPos.length > 0 || filterAge.length > 0 || filterQuality.length > 0 || filterNationality || filterLeague || filterClub || filterExactAge || filterExactQuality) && (
                         <>
-                            <Button variant="outline" onPress={saveCurrentFilter} className="bg-slate-900/50 border border-amber-500/40 h-12 rounded-2xl px-4 flex-[0.5] shadow-lg shadow-amber-500/10">
-                                <Button.Label className="text-amber-400 font-bold text-xs">💾</Button.Label>
+                            <Button variant="outline" onPress={saveCurrentFilter} className={`bg-slate-900/50 h-12 rounded-2xl px-4 flex-[0.5] shadow-lg ${
+                                    canSaveFilter
+                                        ? 'border border-amber-500/40 shadow-amber-500/10'
+                                        : 'border border-white/10 opacity-50'
+                                }`}>
+                                <Button.Label className={`font-bold text-xs ${canSaveFilter ? 'text-amber-400' : 'text-slate-500'}`}>{canSaveFilter ? '💾' : '🔒'}</Button.Label>
                             </Button>
                             <Button variant="outline" onPress={resetFilters} className="bg-slate-900/50 border border-white/10 h-12 rounded-2xl px-4 flex-[0.5]">
                                 <Button.Label className="text-white/70 font-bold text-xs">{t('clean')}</Button.Label>
@@ -447,11 +481,18 @@ nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
                     )}
                     <Button 
                         onPress={() => fetchPlayers(0, true)} 
-                        className={`flex-1 h-12 rounded-2xl shadow-xl ${isOnline ? 'bg-emerald-500 shadow-emerald-500/20' : 'bg-slate-800 shadow-none opacity-50'}`}
+                        className={`flex-1 h-12 rounded-2xl shadow-xl ${isOnline && canSearch ? 'bg-emerald-500 shadow-emerald-500/20' : !canSearch ? 'bg-amber-500/80 shadow-amber-500/20' : 'bg-slate-800 shadow-none opacity-50'}`}
                         isDisabled={!isOnline}
                     >
                         <Button.Label className={`${isOnline ? 'text-black' : 'text-slate-500'} font-black tracking-widest text-xs`}>
-                            {isOnline ? t('search_players') + ' 🔍' : t('offline_mode').toUpperCase()}
+                            {!isOnline
+                                ? t('offline_mode').toUpperCase()
+                                : !canSearch
+                                    ? `🔒 ${t('searches_limit_reached')} (${dailySearchesUsed}/${limits.dailySearches})`
+                                    : !isPro
+                                        ? `${t('search_players')} 🔍 (${dailySearchesUsed}/${limits.dailySearches})`
+                                        : t('search_players') + ' 🔍'
+                            }
                         </Button.Label>
                     </Button>
                 </View>
