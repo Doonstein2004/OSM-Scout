@@ -58,12 +58,11 @@ interface SubscriptionState {
     paywallReason: string;
     showPaywall: (reason?: string) => void;
     hidePaywall: () => void;
-    canSearch: boolean;
     successModalVisible: boolean;
     showSuccess: () => void;
     hideSuccess: () => void;
     canUseFeature: (feature: keyof PlanLimits) => boolean;
-    setPlan: (plan: Plan) => void;
+    setPlan: (plan: Plan) => Promise<void>;
     restorePurchases: () => Promise<void>;
 }
 
@@ -255,16 +254,14 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return false;
     };
 
-    const restorePurchases = async () => {
+    const restorePurchases = async (): Promise<void> => {
         try {
             const result = await rcRestorePurchases();
             if (result.success && result.plan) {
                 await setPlan(result.plan);
             }
-            return result;
         } catch (e) {
             console.error('[Subscription] Restore error', e);
-            return { success: false, error: 'Failed to restore purchases' };
         }
     };
 

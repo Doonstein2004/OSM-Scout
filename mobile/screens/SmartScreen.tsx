@@ -12,7 +12,6 @@ import { Analytics } from '../lib/analytics';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence, FadeInUp, LinearTransition } from 'react-native-reanimated';
 
 function TrendingSection() {
-    const { supabase } = useStore();
     const { isPro, showPaywall } = useSubscription();
     const [trending, setTrending] = React.useState<any[]>([]);
     const { t } = useTranslation();

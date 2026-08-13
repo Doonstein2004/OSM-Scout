@@ -30,7 +30,6 @@ export interface PurchaseResult {
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const REVENUECAT_ANDROID_KEY = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY ?? '';
-const REVENUECAT_WEB_KEY = process.env.EXPO_PUBLIC_REVENUECAT_WEB_KEY ?? '';
 
 // Matching the entitlement lookup key in RevenueCat dashboard
 export const ENTITLEMENT_ID = 'pro_access';
@@ -54,11 +53,12 @@ export const STRIPE_PRICE_IDS = {
  * 2. Add endpoint: https://api.revenuecat.com/v1/webhooks/stripe
  * 3. Select events: checkout.session.completed, customer.subscription.updated, customer.subscription.deleted
  */
-// Stripe Payment Links (Fallback/Direct for Web if RevenueCat domain has SSL issues)
+// Stripe Payment Links for Web checkout (PRODUCTION links from Stripe Dashboard → Payment Links)
+// Set EXPO_PUBLIC_STRIPE_LINK_MONTHLY and EXPO_PUBLIC_STRIPE_LINK_LIFETIME in .env
 // ⚠️ IMPORTANT: These MUST include ?client_reference_id=USER_ID to link to RevenueCat
 export const STRIPE_PAYMENT_LINKS = {
-    monthly: 'https://buy.stripe.com/test_14AdR84Q23UK4UWeJ56wE00', 
-    lifetime: 'https://buy.stripe.com/test_5kQ14m82e0Iy2MOfN96wE01',
+    monthly:  process.env.EXPO_PUBLIC_STRIPE_LINK_MONTHLY  ?? '',
+    lifetime: process.env.EXPO_PUBLIC_STRIPE_LINK_LIFETIME ?? '',
 } as const;
 
 // RevenueCat Billing Checkout URLs (Preferred for Web Billing)
@@ -129,8 +129,10 @@ export async function checkProEntitlement(userId?: string): Promise<'free' | 'pr
         }
     } else {
         // Web check using REST API
-        // ⚠️ IMPORTANT: For Web Billing verification, you MUST use a RevenueCat Secret Key (sk_...)
-        // Public keys (rcb_...) are only for frontend initialization and cannot access the Subscriber API.
+        // ⚠️ SECURITY NOTE: This key is exposed in the web bundle via EXPO_PUBLIC_.
+        // Before production, move this check to a Supabase Edge Function:
+        //   supabase/functions/check-entitlement/index.ts  →  calls RC with the secret key server-side.
+        // For now it works in development / staging.
         const secretKey = process.env.EXPO_PUBLIC_REVENUECAT_SECRET_KEY;
         
         if (!secretKey || secretKey.startsWith('your_')) {
@@ -167,7 +169,7 @@ export async function checkProEntitlement(userId?: string): Promise<'free' | 'pr
 
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error(`[Purchases] ❌ RevenueCat ${isV2 ? 'V2' : 'V1'} API error (${response.status}):`, errorText);
+                console.error(`[Purchases] ❌ RevenueCat V1 API error (${response.status}):`, errorText);
                 return 'free';
             }
 

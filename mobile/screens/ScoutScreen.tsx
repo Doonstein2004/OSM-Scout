@@ -143,7 +143,7 @@ export default function ScoutScreen() {
         if (isReset) {
             if (!canSearch) {
                 Analytics.trackLimitReached('searches');
-                showPaywall(`Alcanzaste tu límite de ${limits.dailySearches} búsquedas gratuitas de hoy.\nActualiza a PRO para búsquedas ilimitadas.`);
+                showPaywall(t('paywall_reason_search_limit', { count: limits.dailySearches }));
                 return;
             }
             Analytics.trackSearch({ sortBy, sortAscending, filterPos, filterAge, filterQuality });
@@ -153,9 +153,7 @@ export default function ScoutScreen() {
 
         // ── Freemium gate ────────────────────────────────────────────────
         if (!canSearch) {
-            showPaywall(
-                `Alcanzaste tu límite de ${limits.dailySearches} búsquedas gratuitas de hoy.\nActualiza a PRO para búsquedas ilimitadas.`
-            );
+            showPaywall(t('paywall_reason_search_limit', { count: limits.dailySearches }));
             return;
         }
 
@@ -265,7 +263,7 @@ export default function ScoutScreen() {
     const saveCurrentFilter = async () => {
         // ── Freemium gate for saved filters
         if (!canSaveFilter) {
-            showPaywall(`Has alcanzado el límite de ${limits.savedFilters} filtros guardados.\nActualiza a PRO para guardar filtros ilimitados.`);
+            showPaywall(t('paywall_reason_filter_limit', { count: limits.savedFilters }));
             return;
         }
         const parts = [];

@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, Platform, AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Purchases from 'react-native-purchases';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import { useSubscription } from '../context/SubscriptionContext';
-import { purchaseMonthly, purchaseLifetime, checkProEntitlement } from '../lib/purchases';
+import { purchaseMonthly, purchaseLifetime, restorePurchases, checkProEntitlement } from '../lib/purchases';
 import { getOrCreateUserId } from '../lib/supabase';
 import { Analytics } from '../lib/analytics';
 import * as Linking from 'expo-linking';
@@ -144,7 +143,7 @@ export default function PaywallModal() {
                     Linking.openURL(result.url);
                 }
             } else if (result.error !== 'cancelled') {
-                Alert.alert(t('error_purchase_title'), result.error ?? t('error_generic'));
+                Alert.alert(t('paywall_error_title'), result.error ?? t('error_generic'));
             }
 
         } finally {
@@ -178,8 +177,13 @@ export default function PaywallModal() {
             // Clear everything for a clean test
             await AsyncStorage.multiRemove(['user_entitlements', 'supabase.auth.token', 'sb-access-token', 'sb-refresh-token']);
             
-            // Force a logout in Purchases if possible
-            try { await Purchases.logOut(); } catch(e) {}
+            // Force a logout in Purchases if possible (native only)
+            try {
+                if (Platform.OS !== 'web') {
+                    const { default: Purchases } = await import('react-native-purchases');
+                    await Purchases.logOut();
+                }
+            } catch(e) {}
             
             setPlan('free');
             
