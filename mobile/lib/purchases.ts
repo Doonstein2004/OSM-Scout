@@ -53,12 +53,12 @@ export const STRIPE_PRICE_IDS = {
  * 2. Add endpoint: https://api.revenuecat.com/v1/webhooks/stripe
  * 3. Select events: checkout.session.completed, customer.subscription.updated, customer.subscription.deleted
  */
-// Stripe Payment Links for Web checkout (PRODUCTION links from Stripe Dashboard → Payment Links)
+// Stripe Payment Links for Web checkout (BRL-based, Adaptive Pricing converts to other currencies)
 // Set EXPO_PUBLIC_STRIPE_LINK_MONTHLY and EXPO_PUBLIC_STRIPE_LINK_LIFETIME in .env
 // ⚠️ IMPORTANT: These MUST include ?client_reference_id=USER_ID to link to RevenueCat
 export const STRIPE_PAYMENT_LINKS = {
-    monthly:  process.env.EXPO_PUBLIC_STRIPE_LINK_MONTHLY  ?? '',
-    lifetime: process.env.EXPO_PUBLIC_STRIPE_LINK_LIFETIME ?? '',
+    monthly:  process.env.EXPO_PUBLIC_STRIPE_LINK_MONTHLY  ?? 'https://buy.stripe.com/3cIbJ0eqC4YObjk58v6wE02',
+    lifetime: process.env.EXPO_PUBLIC_STRIPE_LINK_LIFETIME ?? 'https://buy.stripe.com/3cI00igyK76WafgasP6wE03',
 } as const;
 
 // RevenueCat Billing Checkout URLs (Preferred for Web Billing)
@@ -323,8 +323,8 @@ export interface PaywallPrices {
 
 // Fallback prices shown while loading or if fetch fails
 const FALLBACK_PRICES: PaywallPrices = {
-    monthly:  '$2.99',
-    lifetime: '$14.99',
+    monthly:  'R$ 15,50',
+    lifetime: 'R$ 77,70',
 };
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';

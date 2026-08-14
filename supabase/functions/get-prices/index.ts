@@ -95,23 +95,23 @@ serve(async (req) => {
             fetchActivePrice(PRODUCT_IDS.lifetime),
         ]);
 
-        // Base amounts in USD cents
+        // Base amounts and currency come from the active Stripe price
+        const baseCurrency = monthlyPrice.currency.toUpperCase(); // e.g. BRL
         let monthlyAmount  = monthlyPrice.unit_amount  / 100;
         let lifetimeAmount = lifetimePrice.unit_amount / 100;
 
-        // 2. Convert to target currency if different from USD
-        if (currency !== 'USD') {
-            const rate = await getExchangeRate('USD', currency);
+        // Convert to target currency if different from the base price currency
+        if (currency !== baseCurrency) {
+            const rate = await getExchangeRate(baseCurrency, currency);
             if (rate) {
                 monthlyAmount  = monthlyAmount  * rate;
                 lifetimeAmount = lifetimeAmount * rate;
             }
-            // If rate not found, amounts stay in USD and we format as USD
         }
 
-        // If conversion failed, fall back to showing USD amounts
-        const displayCurrency = (currency !== 'USD' && monthlyAmount === monthlyPrice.unit_amount / 100)
-            ? 'USD'
+        // If conversion failed or not needed, show base currency amounts
+        const displayCurrency = (currency !== baseCurrency && monthlyAmount === monthlyPrice.unit_amount / 100)
+            ? baseCurrency
             : currency;
 
         return new Response(
