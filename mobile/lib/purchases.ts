@@ -40,19 +40,6 @@ export const PRODUCT_IDS = {
     lifetime: 'osm_pro_lifetime',             // Android ID
 } as const;
 
-// Stripe Price IDs for Web Billing (RevenueCat)
-export const STRIPE_PRICE_IDS = {
-    monthly:  'price_1TUyxQAHcKQQsUWmtJMe673q',
-    yearly:   'price_1TUyxQAHcKQQsUWmk67KPybh',
-    lifetime: 'price_1TUyxQAHcKQQsUWmlzKkauwk',
-} as const;
-
-/**
- * ⚠️ Action Required: Stripe Webhook Configuration
- * 1. Go to Stripe Dashboard -> Developers -> Webhooks
- * 2. Add endpoint: https://api.revenuecat.com/v1/webhooks/stripe
- * 3. Select events: checkout.session.completed, customer.subscription.updated, customer.subscription.deleted
- */
 // Stripe Payment Links for Web checkout (BRL-based, Adaptive Pricing converts to other currencies)
 // Set EXPO_PUBLIC_STRIPE_LINK_MONTHLY and EXPO_PUBLIC_STRIPE_LINK_LIFETIME in .env
 // ⚠️ IMPORTANT: These MUST include ?client_reference_id=USER_ID to link to RevenueCat
@@ -128,85 +115,33 @@ export async function checkProEntitlement(userId?: string): Promise<'free' | 'pr
             return 'free';
         }
     } else {
-        // Web check using REST API
-        // ⚠️ SECURITY NOTE: This key is exposed in the web bundle via EXPO_PUBLIC_.
-        // Before production, move this check to a Supabase Edge Function:
-        //   supabase/functions/check-entitlement/index.ts  →  calls RC with the secret key server-side.
-        // For now it works in development / staging.
-        const secretKey = process.env.EXPO_PUBLIC_REVENUECAT_SECRET_KEY;
-        
-        if (!secretKey || secretKey.startsWith('your_')) {
-            console.error('[Purchases] ❌ ERROR: Missing or invalid EXPO_PUBLIC_REVENUECAT_SECRET_KEY in .env');
-            console.warn('[Purchases] Web verification requires a Secret Key (sk_...). Billing keys (rcb_...) are NOT enough for verification.');
-            return 'free';
-        }
-
+        // Web check via Supabase Edge Function (secret key stays server-side)
         if (!userId) {
             console.warn('[Purchases] userId is missing for web entitlement check');
             return 'free';
         }
 
         try {
-            // ⚠️ DEBUG: Forced V1 API because legacy 'sk_' keys are not compatible with V2 project endpoints.
-            const endpoint = `https://api.revenuecat.com/v1/subscribers/${userId}`;
-            
-            console.debug(`[Purchases] Checking RevenueCat V1 for user: ${userId}`);
-            
-            const response = await fetch(endpoint, {
-                headers: {
-                    'Authorization': `Bearer ${secretKey}`,
-                    'Content-Type': 'application/json',
-                    'X-Platform': 'web'
-                }
-            });
+            const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+            const anonKey    = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+            const res = await fetch(
+                `${supabaseUrl}/functions/v1/check-entitlement?user_id=${encodeURIComponent(userId)}`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${anonKey}`,
+                        'apikey': anonKey,
+                    },
+                },
+            );
 
-            if (response.status === 404) {
-                console.log(`[Purchases] 🔍 Subscriber NOT FOUND in RevenueCat for ID: ${userId}`);
-                console.warn('[Purchases] 💡 TIP: If you just paid, RevenueCat hasn\'t received the Stripe event yet.');
-                console.warn(`[Purchases] 💡 ENSURE STRIPE WEBHOOK IS SET TO: https://api.revenuecat.com/v1/incoming-webhooks/stripe?app=app9d21a39cb1`);
+            if (!res.ok) {
+                console.error(`[Purchases] check-entitlement error: ${res.status}`);
                 return 'free';
             }
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[Purchases] ❌ RevenueCat V1 API error (${response.status}):`, errorText);
-                return 'free';
-            }
-
-            const data = await response.json();
-            console.debug('[Purchases] ✅ RC Response Data:', JSON.stringify(data, null, 2));
-            const subscriber = data?.subscriber;
-            
-            if (!subscriber) {
-                console.warn('[Purchases] Empty subscriber object returned');
-                return 'free';
-            }
-
-            const entitlements = subscriber.entitlements || {};
-            const entitlement = entitlements[ENTITLEMENT_ID];
-
-            if (entitlement) {
-                // Check if the entitlement is still valid
-                const expiresDate = entitlement.expires_date ? new Date(entitlement.expires_date) : null;
-                const isActive = !expiresDate || expiresDate > new Date();
-                
-                if (isActive) {
-                    const isLifetime = entitlement.product_identifier?.includes('lifetime') || entitlement.period_type === 'lifetime';
-                    const result = isLifetime ? 'lifetime' : 'pro';
-                    console.log(`[Purchases] ✅ Web Check SUCCESS: User is ${result}`);
-                    return result;
-                } else {
-                    console.log('[Purchases] ⏳ Entitlement found but expired.');
-                }
-            } else {
-                // If there are subscriptions but no entitlement, it might be a mapping issue
-                const subs = subscriber.subscriptions || {};
-                if (Object.keys(subs).length > 0) {
-                    console.warn('[Purchases] ⚠️ User has active Stripe subscriptions in RC, but no "pro_access" entitlement. CHECK REVENUECAT MAPPING!', Object.keys(subs));
-                }
-            }
-
-            return 'free';
+            const { status } = await res.json();
+            console.log(`[Purchases] ✅ Web Check: ${status}`);
+            return (status === 'pro' || status === 'lifetime') ? status : 'free';
         } catch (e) {
             console.error('[Purchases] Web check fetch error:', e);
             return 'free';
