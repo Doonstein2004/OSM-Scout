@@ -358,10 +358,11 @@ export async function getPaywallPrices(): Promise<PaywallPrices> {
 
     // Web: fetch from Edge Function
     try {
+        const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
         const res = await fetch(`${SUPABASE_URL}/functions/v1/get-prices`, {
             headers: {
-                'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
-                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${anonKey}`,
+                'apikey': anonKey,
             },
         });
         if (!res.ok) throw new Error(`Edge Function error: ${res.status}`);
