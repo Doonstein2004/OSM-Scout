@@ -104,7 +104,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     // Scout Results State
     const [players, setPlayers] = useState<any[]>([]);
-    const [hasMore, setHasMore] = useState(true);
+    const [hasMore, setHasMore] = useState(false);
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(0);
     const [search, setSearch] = useState('');

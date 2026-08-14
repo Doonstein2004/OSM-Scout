@@ -285,28 +285,30 @@ export default function PaywallModal() {
                                         alignItems: 'center',
                                         gap: 6,
                                         paddingHorizontal: 12,
-                                        paddingVertical: 8,
+                                        paddingVertical: 10,
                                         borderRadius: 16,
                                         borderWidth: 1,
                                         width: '48%',
+                                        minHeight: 48,
                                         backgroundColor: f.free ? 'rgba(255,255,255,0.04)' : 'rgba(16,185,129,0.08)',
                                         borderColor: f.free ? 'rgba(255,255,255,0.08)' : 'rgba(16,185,129,0.2)',
                                     }}
                                 >
                                     <Text style={{ fontSize: 13 }}>{f.icon}</Text>
                                     <Text
-                                        numberOfLines={1}
+                                        numberOfLines={2}
                                         style={{
                                             fontSize: 11,
                                             fontWeight: '700',
                                             flex: 1,
+                                            lineHeight: 15,
                                             color: f.free ? '#94a3b8' : '#6ee7b7',
                                         }}
                                     >
                                         {t(f.labelKey)}
                                     </Text>
                                     {!f.free && (
-                                        <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: 'rgba(16,185,129,0.3)', alignItems: 'center', justifyContent: 'center' }}>
+                                        <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: 'rgba(16,185,129,0.3)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                             <Text style={{ fontSize: 8, color: '#6ee7b7' }}>✓</Text>
                                         </View>
                                     )}
@@ -345,7 +347,13 @@ export default function PaywallModal() {
                                             : 'border-white/10 bg-white/5'
                                     }`}>
                                         <Text className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">{t('plan_monthly_label')}</Text>
-                                        <Text className={`font-black text-3xl ${selectedPlan === 'monthly' ? 'text-white' : 'text-slate-400'}`}>
+                                        <Text
+                                            numberOfLines={1}
+                                            adjustsFontSizeToFit
+                                            minimumFontScale={0.7}
+                                            className={`font-black text-3xl ${selectedPlan === 'monthly' ? 'text-white' : 'text-slate-400'}`}
+                                            style={{ width: '100%', textAlign: 'center' }}
+                                        >
                                             {prices.monthly}
                                         </Text>
                                         <Text className="text-slate-500 text-[10px] mt-0.5">{t('plan_monthly_period')}</Text>
@@ -372,7 +380,13 @@ export default function PaywallModal() {
                                             <Text className="text-black font-black text-[9px] uppercase tracking-widest">{t('plan_best_value')}</Text>
                                         </View>
                                         <Text className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">{t('plan_lifetime_label')}</Text>
-                                        <Text className={`font-black text-3xl ${selectedPlan === 'lifetime' ? 'text-white' : 'text-slate-400'}`}>
+                                        <Text
+                                            numberOfLines={1}
+                                            adjustsFontSizeToFit
+                                            minimumFontScale={0.7}
+                                            className={`font-black text-3xl ${selectedPlan === 'lifetime' ? 'text-white' : 'text-slate-400'}`}
+                                            style={{ width: '100%', textAlign: 'center' }}
+                                        >
                                             {prices.lifetime}
                                         </Text>
                                         <Text className="text-slate-500 text-[10px] mt-0.5">{t('plan_lifetime_period')}</Text>

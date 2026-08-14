@@ -29,9 +29,8 @@ const PlayerCard = memo(({ player, isTarget, onToggleTarget, formatPrice, getEst
                                     <Text className="text-emerald-400 font-black text-xl">{player.overall}</Text>
                                 </View>
                                 <View className="flex-row items-center justify-between w-full mt-1.5 px-0.5">
-                                    <View className="bg-rose-500/20 rounded-md px-1 py-0.5"><Text className="text-rose-400 text-[8px] font-black">AT {player.attack !== undefined ? player.attack : '-'}</Text></View>
-                                    <View className="bg-indigo-500/20 rounded-md px-1 py-0.5"><Text className="text-indigo-400 text-[8px] font-black">OV {player.overall}</Text></View>
-                                    <View className="bg-blue-500/20 rounded-md px-1 py-0.5"><Text className="text-blue-400 text-[8px] font-black">DE {player.defense !== undefined ? player.defense : '-'}</Text></View>
+                                    <View className="bg-rose-500/20 rounded-md px-1.5 py-0.5"><Text className="text-rose-400 text-[8px] font-black">AT {player.attack !== undefined ? player.attack : '-'}</Text></View>
+                                    <View className="bg-blue-500/20 rounded-md px-1.5 py-0.5"><Text className="text-blue-400 text-[8px] font-black">DE {player.defense !== undefined ? player.defense : '-'}</Text></View>
                                 </View>
                             </View>
                             <View className="flex-1 pr-1">
@@ -129,13 +128,13 @@ export default function ScoutScreen() {
         tryLoadOffline();
     }, [isOnline]);
 
-    // Reset list on filter change (only online)
+    // Reset sort only — players are cleared when user explicitly clicks Buscar
     useEffect(() => {
         if (!isOnline) return;
         setPlayers([]);
         setPage(0);
-        setHasMore(true);
-    }, [sortAscending, sortBy, filterPos, filterDetailedPos, filterNationality, filterAge, filterQuality, filterExactAge, filterExactQuality, filterLeague, filterClub]);
+        setHasMore(false);
+    }, [sortAscending, sortBy]);
 
     async function fetchPlayers(targetPage = page, isReset = false) {
         if (!isOnline) { Alert.alert('Sin conexión', 'Está viendo resultados en caché.'); return; }
@@ -404,7 +403,7 @@ export default function ScoutScreen() {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4" contentContainerStyle={{ gap: 8, paddingRight: 20 }}>
                     {['<20', '20-24', '25-29', '30-34', '>34'].map(age => (
                         <TouchableOpacity key={age} onPress={() => toggleArrayItem(setFilterAge, age)}>
-                            <View className={`border rounded-xl h-10 px-4 justify-center items-center ${filterAge.includes(age) ? 'bg-emerald-500/20 border-emerald-500/60 shadow-lg shadow-emerald-500/20' : 'bg-white/5 border-white/10'}`}>
+                            <View style={{ minWidth: 60 }} className={`border rounded-xl h-10 px-4 justify-center items-center ${filterAge.includes(age) ? 'bg-emerald-500/20 border-emerald-500/60 shadow-lg shadow-emerald-500/20' : 'bg-white/5 border-white/10'}`}>
                                 <Text className={`${filterAge.includes(age) ? 'text-emerald-400 font-bold' : 'text-slate-300'} text-xs`}>
                                     {age}
                                 </Text>
@@ -484,11 +483,11 @@ export default function ScoutScreen() {
                         className={`flex-1 h-12 rounded-2xl shadow-xl ${isOnline && canSearch ? 'bg-emerald-500 shadow-emerald-500/20' : !canSearch ? 'bg-amber-500/80 shadow-amber-500/20' : 'bg-slate-800 shadow-none opacity-50'}`}
                         isDisabled={!isOnline}
                     >
-                        <Button.Label className={`${isOnline ? 'text-black' : 'text-slate-500'} font-black tracking-widest text-xs`}>
+                        <Button.Label className={`${isOnline ? 'text-black' : 'text-slate-500'} font-black tracking-widest text-xs`} numberOfLines={1}>
                             {!isOnline
                                 ? t('offline_mode').toUpperCase()
                                 : !canSearch
-                                    ? `🔒 ${t('searches_limit_reached')} (${dailySearchesUsed}/${limits.dailySearches})`
+                                    ? `🔒 ${dailySearchesUsed}/${limits.dailySearches}`
                                     : !isPro
                                         ? `${t('search_players')} 🔍 (${dailySearchesUsed}/${limits.dailySearches})`
                                         : t('search_players') + ' 🔍'
@@ -549,7 +548,7 @@ export default function ScoutScreen() {
                     <Spinner size="lg" className="text-emerald-500" />
                     <Text className="text-white/50 mt-4 font-black tracking-widest text-[10px] uppercase">{t('loading')}</Text>
                 </View>
-            ) : hasMore && (
+            ) : hasMore && players.length > 0 && (
                 <TouchableOpacity
                     onPress={() => fetchPlayers()}
                     className="py-6 items-center"
