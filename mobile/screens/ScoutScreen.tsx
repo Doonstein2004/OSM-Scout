@@ -20,8 +20,8 @@ const PlayerCard = memo(({ player, isTarget, onToggleTarget, formatPrice, getEst
             entering={FadeInUp.duration(400)}
             layout={LinearTransition}
         >
-            <Card className="mb-3 bg-white/5 border border-white/10 overflow-hidden rounded-3xl shadow-none">
-                <Surface className="p-4 bg-transparent w-full">
+            <Card className="mb-3 border border-white/10 overflow-hidden rounded-3xl shadow-none" style={{ backgroundColor: 'rgba(15,23,42,0.85)' }}>
+                <Surface className="p-4 w-full" style={{ backgroundColor: 'transparent' }}>
                     <View className="flex-row items-center justify-between mb-3 w-full">
                         <View className="flex-row items-center flex-1 pr-2">
                             <View className="items-center mr-3 w-16">
