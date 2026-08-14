@@ -2,7 +2,7 @@ import React from 'react';
 import { Modal, View, Text, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useTranslation } from 'react-i18next';
-import Animated, { FadeInUp, FadeInDown, SlideInBottom } from 'react-native-reanimated';
+import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { useSubscription } from '../context/SubscriptionContext';
 
 const SuccessModal = () => {
@@ -26,7 +26,7 @@ const SuccessModal = () => {
                 />
                 
                 <Animated.View 
-                    entering={SlideInBottom.springify().damping(15)}
+                    entering={FadeInDown.springify().damping(15)}
                     className="w-full max-w-md bg-slate-900 border-2 border-emerald-500/50 rounded-[40px] overflow-hidden shadow-2xl shadow-emerald-500/20"
                 >
                     <ScrollView showsVerticalScrollIndicator={false}>

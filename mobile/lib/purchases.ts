@@ -314,6 +314,64 @@ export async function purchaseLifetime(userId?: string): Promise<PurchaseResult>
     }
 }
 
+// ─── Paywall prices ──────────────────────────────────────────────────────────
+
+export interface PaywallPrices {
+    monthly: string;
+    lifetime: string;
+}
+
+// Fallback prices shown while loading or if fetch fails
+const FALLBACK_PRICES: PaywallPrices = {
+    monthly:  '$2.99',
+    lifetime: '$14.99',
+};
+
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+
+/**
+ * Returns localized prices:
+ * - Native: directly from RC offerings (Google Play / App Store)
+ * - Web: from Supabase Edge Function → Stripe API (secret key stays server-side)
+ */
+export async function getPaywallPrices(): Promise<PaywallPrices> {
+    if (isNative) {
+        try {
+            const Purchases = (await import('react-native-purchases')).default;
+            const offerings = await Purchases.getOfferings();
+            const current = offerings.current;
+
+            const monthly = current?.monthly?.product.priceString;
+            const lifetime = (
+                current?.lifetime ??
+                current?.availablePackages.find(p => p.product.identifier.includes('lifetime'))
+            )?.product.priceString;
+
+            return {
+                monthly:  monthly  ?? FALLBACK_PRICES.monthly,
+                lifetime: lifetime ?? FALLBACK_PRICES.lifetime,
+            };
+        } catch {
+            return FALLBACK_PRICES;
+        }
+    }
+
+    // Web: fetch from Edge Function
+    try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/get-prices`, {
+            headers: {
+                'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
+                'Content-Type': 'application/json',
+            },
+        });
+        if (!res.ok) throw new Error(`Edge Function error: ${res.status}`);
+        return await res.json();
+    } catch (e) {
+        console.warn('[Purchases] getPaywallPrices web fetch failed, using fallback:', e);
+        return FALLBACK_PRICES;
+    }
+}
+
 // ─── Restore purchases ───────────────────────────────────────────────────────
 
 export async function restorePurchases(): Promise<PurchaseResult> {

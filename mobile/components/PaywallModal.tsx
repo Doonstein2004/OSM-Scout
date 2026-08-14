@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import { useSubscription } from '../context/SubscriptionContext';
-import { purchaseMonthly, purchaseLifetime, restorePurchases, checkProEntitlement } from '../lib/purchases';
+import { purchaseMonthly, purchaseLifetime, restorePurchases, checkProEntitlement, getPaywallPrices, PaywallPrices } from '../lib/purchases';
 import { getOrCreateUserId } from '../lib/supabase';
 import { Analytics } from '../lib/analytics';
 import * as Linking from 'expo-linking';
@@ -47,6 +47,7 @@ export default function PaywallModal() {
     const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'lifetime'>('monthly');
     const [loading, setLoading] = useState(false);
     const [isRedirected, setIsRedirected] = useState(false);
+    const [prices, setPrices] = useState<PaywallPrices>({ monthly: '...', lifetime: '...' });
 
     useEffect(() => {
         if (paywallVisible) {
@@ -54,6 +55,7 @@ export default function PaywallModal() {
             getOrCreateUserId().then(id => {
                 console.log('[Paywall] Modal opened. User ID:', id);
             });
+            getPaywallPrices().then(setPrices);
         } else {
             setIsRedirected(false);
         }
@@ -344,7 +346,7 @@ export default function PaywallModal() {
                                     }`}>
                                         <Text className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">{t('plan_monthly_label')}</Text>
                                         <Text className={`font-black text-3xl ${selectedPlan === 'monthly' ? 'text-white' : 'text-slate-400'}`}>
-                                            {t('plan_monthly_price')}
+                                            {prices.monthly}
                                         </Text>
                                         <Text className="text-slate-500 text-[10px] mt-0.5">{t('plan_monthly_period')}</Text>
                                         {selectedPlan === 'monthly' && (
@@ -371,7 +373,7 @@ export default function PaywallModal() {
                                         </View>
                                         <Text className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">{t('plan_lifetime_label')}</Text>
                                         <Text className={`font-black text-3xl ${selectedPlan === 'lifetime' ? 'text-white' : 'text-slate-400'}`}>
-                                            {t('plan_lifetime_price')}
+                                            {prices.lifetime}
                                         </Text>
                                         <Text className="text-slate-500 text-[10px] mt-0.5">{t('plan_lifetime_period')}</Text>
                                         {selectedPlan === 'lifetime' && (
@@ -413,7 +415,7 @@ export default function PaywallModal() {
                                                 ? t('cta_processing')
                                                 : selectedPlan === 'lifetime'
                                                     ? t('cta_lifetime')
-                                                    : t('cta_monthly')
+                                                    : t('cta_monthly', { price: prices.monthly })
                                             }
                                         </Text>
                                     </View>
