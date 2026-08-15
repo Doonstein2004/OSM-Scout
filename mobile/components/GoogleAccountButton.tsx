@@ -31,7 +31,7 @@ export default function GoogleAccountButton({ variant, compact = false }: Props)
     const handlePress = async () => {
         setLoading(true);
         try {
-            const result = await signInWithGoogle();
+            const result = await signInWithGoogle(variant);
 
             // On web the page navigates to Google and this code never resumes.
             if (Platform.OS === 'web') return;

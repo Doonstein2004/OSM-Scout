@@ -202,15 +202,27 @@ async function runOAuth(mode: 'link' | 'signin'): Promise<AuthResult> {
 /**
  * Attaches a Google account to the current session.
  *
- * For an anonymous user this links in place, keeping the user id. If that
- * Google account already belongs to someone — which is what happens when a
- * user reinstalls or clears their data — it signs into that account instead,
- * restoring whatever they had bought.
+ * `intent` decides the strategy, and it matters for more than tidiness:
+ *
+ * - 'protect' links in place, so an anonymous user keeps their id and with it
+ *   the purchase already attached to it. Should that Google account turn out to
+ *   belong to someone else, it falls back to signing in.
+ * - 'recover' signs straight in, because the caller has already told us the
+ *   purchase is on another account. Attempting to link first would fail and
+ *   send the user through the consent screen a second time.
  */
-export async function signInWithGoogle(): Promise<AuthResult> {
+export async function signInWithGoogle(
+    intent: 'protect' | 'recover' = 'protect',
+): Promise<AuthResult> {
     const identity = await getIdentity();
 
-    if (identity.isAnonymous && identity.userId) {
+    // "Recover" means the purchase lives on another account, so linking the
+    // current throwaway session can only fail — and failing costs a second trip
+    // through the Google consent screen, which users see as the dialog opening
+    // twice. Go straight to signing in.
+    const shouldLink = intent === 'protect' && identity.isAnonymous && identity.userId;
+
+    if (shouldLink) {
         const linkAttempt = await runOAuth('link');
         if (linkAttempt.success) return { ...linkAttempt, linked: true };
         if (linkAttempt.cancelled) return linkAttempt;
