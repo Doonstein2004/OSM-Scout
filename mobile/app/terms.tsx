@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, View, Text, Linking, TouchableOpacity } from 'react-native';
 
 const UPDATED = '15 de agosto de 2026';
-const CONTACT = 'soporte@osmscout.app'; // TODO: replace with the real support address
+const CONTACT = 'danielbello111@gmail.com';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
     return (
