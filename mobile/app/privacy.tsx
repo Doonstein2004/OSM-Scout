@@ -65,6 +65,12 @@ export default function PrivacyPolicy() {
                         rastrearte fuera de la aplicación.
                     </Item>
                     <Item>
+                        <Text className="text-white font-bold">Conexión.</Text> Para evitar que se eludan
+                        los límites del plan gratuito guardamos un valor derivado de tu dirección IP
+                        mediante una función irreversible. No conservamos la dirección en sí ni podemos
+                        reconstruirla, y solo se usa para contar búsquedas del día.
+                    </Item>
+                    <Item>
                         <Text className="text-white font-bold">Compras.</Text> Guardamos el estado de tu
                         suscripción y el correo asociado al pago, para poder restaurarla. No vemos ni
                         almacenamos los datos de tu tarjeta en ningún momento.

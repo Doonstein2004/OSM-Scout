@@ -10,6 +10,31 @@ const CORS = {
 const ENTITLEMENT_ID   = 'pro_access';
 const FREE_DAILY_LIMIT = 5;
 
+/**
+ * A single address can front an office, a campus or a carrier NAT, so it gets
+ * more headroom than one person — enough to stop someone farming quota from
+ * fresh incognito windows without locking out everyone on a shared connection.
+ */
+const IP_DAILY_LIMIT = 20;
+
+/**
+ * Derives a stable, non-reversible key from the caller's address.
+ *
+ * The raw IP is never stored: it is personal data, and all this needs is
+ * something that collides for the same visitor and nothing else. Salting with
+ * the service role key keeps the digest from being reversible by lookup.
+ */
+async function ipKey(ip: string, salt: string): Promise<string> {
+    const digest = await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(`${salt}:${ip}`),
+    );
+    return Array.from(new Uint8Array(digest))
+        .slice(0, 16)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+}
+
 type Plan = 'free' | 'pro' | 'lifetime';
 
 function json(body: unknown, status = 200) {
@@ -106,28 +131,52 @@ serve(async (req) => {
     //
     // Defeating both at once requires patching the app binary, which is past
     // the point worth defending for a free-tier counter.
-    const subjects = deviceId ? [`device:${deviceId}`, `user:${user.id}`] : [`user:${user.id}`];
-    const rpc      = action === 'consume' ? 'bump_search_quota' : 'peek_search_quota';
+    // The quota is charged to several subjects at once, each with its own
+    // ceiling, and any one of them being spent blocks the search:
+    //
+    //   • device  → clearing app storage yields a new user id but the same
+    //               device, so the tally carries over
+    //   • user    → spoofing a random device id per request still hits the
+    //               account's own ceiling
+    //   • address → the web has no device id, so a fresh incognito window is a
+    //               fresh user. This is what stops that.
+    //
+    // Only the first two are reported back: the address ceiling is shared, so
+    // showing its count would misrepresent what this visitor has left.
+    const rawIp = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim();
 
-    const counts = await Promise.all(
+    const subjects: { key: string; limit: number; personal: boolean }[] = [];
+    if (deviceId) subjects.push({ key: `device:${deviceId}`, limit: FREE_DAILY_LIMIT, personal: true });
+    subjects.push({ key: `user:${user.id}`, limit: FREE_DAILY_LIMIT, personal: true });
+    if (rawIp) {
+        subjects.push({
+            key: `ip:${await ipKey(rawIp, serviceRoleKey)}`,
+            limit: IP_DAILY_LIMIT,
+            personal: false,
+        });
+    }
+
+    const rpc = action === 'consume' ? 'bump_search_quota' : 'peek_search_quota';
+
+    const results = await Promise.all(
         subjects.map(async (subject) => {
-            const { data, error } = await admin.rpc(rpc, { p_subject: subject });
+            const { data, error } = await admin.rpc(rpc, { p_subject: subject.key });
             if (error) {
-                console.error(`${rpc} failed for ${subject}:`, error.message);
-                return 0;
+                console.error(`${rpc} failed for ${subject.key}:`, error.message);
+                return { ...subject, count: 0 };
             }
-            return typeof data === 'number' ? data : 0;
+            return { ...subject, count: typeof data === 'number' ? data : 0 };
         }),
     );
 
-    const used = Math.max(0, ...counts);
-
     // `bump` returns the count *after* incrementing, so the Nth search reports
     // N and is still within a limit of N. `peek` reports what is already spent,
-    // so hitting the limit means there is nothing left.
-    const allowed = action === 'consume'
-        ? used <= FREE_DAILY_LIMIT
-        : used <  FREE_DAILY_LIMIT;
+    // so reaching the limit means there is nothing left.
+    const isSpent = (count: number, limit: number) =>
+        action === 'consume' ? count > limit : count >= limit;
+
+    const allowed = !results.some(r => isSpent(r.count, r.limit));
+    const used    = Math.max(0, ...results.filter(r => r.personal).map(r => r.count));
 
     return json({
         allowed,
