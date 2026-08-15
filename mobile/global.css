@@ -5,23 +5,81 @@
 @source '../node_modules/heroui-native/lib';
 
 /*
- * heroui-native ships a blue accent (oklch hue 253) and its components fall
- * back to `bg-accent`. On native the `bg-emerald-500` class we pass wins, but
- * on web the component's own rule does — which is why the same button rendered
- * green in the app and blue in the browser.
+ * OSM Scout is dark-only: every screen hardcodes a #020617 background. But
+ * heroui-native ships light and dark token sets and picks between them with a
+ * CSS variant that, on the web, resolves from the visitor's OS colour scheme.
  *
- * Repointing the token at emerald fixes every heroui component at once instead
- * of patching each call site, and keeps the two platforms in agreement.
+ * A browser in light mode therefore rendered heroui's components — Card,
+ * Surface, Button — with the light palette on top of our dark screens: white
+ * cards with white text on the Ligas list, and a blue search button. The phone
+ * was in dark mode, so the same build looked correct there.
  *
- * Declared outside @layer on purpose: unlayered rules beat layered ones in the
- * cascade, so this wins over the library's own @layer theme block without
- * needing to out-specify it.
+ * Pointing the light tokens at the dark values removes the branch entirely, so
+ * components render the same regardless of platform or OS preference. The
+ * accent additionally moves off heroui's blue onto the app's emerald.
+ *
+ * Two notes on the shape of this block:
+ *  - it sits outside @layer because unlayered rules beat layered ones in the
+ *    cascade, so it wins over the library's own @layer theme without having to
+ *    out-specify it;
+ *  - each variant appears exactly once. Splitting the light tokens across two
+ *    @variant light blocks silently dropped the first one — the processor keeps
+ *    only the last block per variant.
  */
 :root {
   @variant light {
-    --accent: oklch(0.696 0.17 162.48); /* emerald-500 */
+    --background: oklch(12% 0.005 285.823);
+    --foreground: var(--snow);
+
+    /* Cards, accordions, disclosure groups */
+    --surface: oklch(0.2103 0.0059 285.89);
+    --surface-foreground: var(--foreground);
+    --surface-secondary: oklch(0.257 0.0037 286.14);
+    --surface-secondary-foreground: var(--foreground);
+    --surface-tertiary: oklch(0.2721 0.0024 247.91);
+    --surface-tertiary-foreground: var(--foreground);
+
+    /* Dialogs, popovers, modals, menus */
+    --overlay: oklch(0.2103 0.0059 285.89);
+    --overlay-foreground: var(--foreground);
+    --backdrop: oklch(0% 0 0 / 20%);
+
+    --muted: oklch(70.5% 0.015 286.067);
+    --default: oklch(27.4% 0.006 286.033);
+    --default-foreground: var(--snow);
+
+    --field-background: oklch(0.2103 0.0059 285.89);
+    --field-foreground: var(--foreground);
+    --field-placeholder: var(--muted);
+    --field-border: transparent;
+
+    --success: oklch(0.7329 0.1935 150.81);
+    --success-foreground: var(--eclipse);
+    --warning: oklch(0.8203 0.1388 76.34);
+    --warning-foreground: var(--eclipse);
+    --danger: oklch(0.594 0.1967 24.63);
+    --danger-foreground: var(--snow);
+
+    --segment: oklch(0.3964 0.01 285.93);
+    --segment-foreground: var(--foreground);
+
+    --border: oklch(28% 0.006 286.033);
+    --separator: oklch(40% 0.006 286.033);
+    --link: var(--foreground);
+
+    --surface-shadow: 0 0 0 0 transparent inset;
+    --overlay-shadow: 0 0 1px 0 rgba(255, 255, 255, 0.2) inset;
+    --field-shadow: 0 0 0 0 transparent inset;
+
+    /* Emerald is the product's identity; heroui defaults to blue. */
+    --accent: oklch(0.696 0.17 162.48);
+    --accent-foreground: var(--snow);
+    --focus: var(--accent);
   }
+
   @variant dark {
-    --accent: oklch(0.696 0.17 162.48); /* emerald-500 */
+    --accent: oklch(0.696 0.17 162.48);
+    --accent-foreground: var(--snow);
+    --focus: var(--accent);
   }
 }
