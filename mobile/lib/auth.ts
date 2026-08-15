@@ -39,6 +39,8 @@ export interface Identity {
 export interface AuthResult {
     success: boolean;
     error?: string;
+    /** Supabase error code, kept so callers can branch on it rather than on prose. */
+    errorCode?: string;
     /** The anonymous session was upgraded in place; the user id is unchanged. */
     linked?: boolean;
     /** Signed into a pre-existing account; a previous purchase may now apply. */
@@ -86,6 +88,21 @@ function isAlreadyLinked(err: { code?: string; message?: string } | null): boole
     return msg.includes('already') && (msg.includes('linked') || msg.includes('exists'));
 }
 
+/**
+ * "Allow manual linking" is off in the project's auth settings.
+ *
+ * Worth its own branch: falling through to a plain sign-in would appear to work
+ * while quietly creating a second account and stranding the purchase — the very
+ * outcome this module exists to prevent. Better to fail loudly.
+ */
+function isManualLinkingDisabled(err: { code?: string; message?: string } | null): boolean {
+    if (!err) return false;
+    if (err.code === 'manual_linking_disabled') return true;
+
+    const msg = (err.message ?? '').toLowerCase();
+    return msg.includes('manual linking') && msg.includes('disabled');
+}
+
 async function runOAuth(mode: 'link' | 'signin'): Promise<AuthResult> {
     const redirectTo = redirectTarget();
 
@@ -98,7 +115,11 @@ async function runOAuth(mode: 'link' | 'signin'): Promise<AuthResult> {
         : await supabase.auth.signInWithOAuth({ provider: 'google', options });
 
     if (error) {
-        return { success: false, error: error.message, ...(isAlreadyLinked(error) && { linked: false }) };
+        return {
+            success: false,
+            error: error.message,
+            errorCode: (error as { code?: string }).code,
+        };
     }
 
     // The page is already navigating away — nothing further to do here.
@@ -141,9 +162,20 @@ export async function signInWithGoogle(): Promise<AuthResult> {
         if (linkAttempt.success) return { ...linkAttempt, linked: true };
         if (linkAttempt.cancelled) return linkAttempt;
 
-        // Not an error worth surfacing: the account exists, so recover it.
-        const errObj = { message: linkAttempt.error };
-        if (isAlreadyLinked(errObj)) {
+        const err = { code: linkAttempt.errorCode, message: linkAttempt.error };
+
+        if (isManualLinkingDisabled(err)) {
+            return {
+                success: false,
+                error: 'Manual linking is disabled for this Supabase project. Enable it under Authentication → Sign In / Providers.',
+                errorCode: 'manual_linking_disabled',
+            };
+        }
+
+        // Not a failure worth surfacing: the account exists, so recover it.
+        const alreadyLinked = isAlreadyLinked(err);
+
+        if (alreadyLinked) {
             const recovery = await runOAuth('signin');
             return recovery.success ? { ...recovery, recovered: true } : recovery;
         }
