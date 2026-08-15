@@ -3,3 +3,25 @@
 @import 'heroui-native/styles';
 
 @source '../node_modules/heroui-native/lib';
+
+/*
+ * heroui-native ships a blue accent (oklch hue 253) and its components fall
+ * back to `bg-accent`. On native the `bg-emerald-500` class we pass wins, but
+ * on web the component's own rule does — which is why the same button rendered
+ * green in the app and blue in the browser.
+ *
+ * Repointing the token at emerald fixes every heroui component at once instead
+ * of patching each call site, and keeps the two platforms in agreement.
+ *
+ * Declared outside @layer on purpose: unlayered rules beat layered ones in the
+ * cascade, so this wins over the library's own @layer theme block without
+ * needing to out-specify it.
+ */
+:root {
+  @variant light {
+    --accent: oklch(0.696 0.17 162.48); /* emerald-500 */
+  }
+  @variant dark {
+    --accent: oklch(0.696 0.17 162.48); /* emerald-500 */
+  }
+}
