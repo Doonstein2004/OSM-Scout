@@ -99,6 +99,36 @@ export async function initializePurchases(userId?: string): Promise<void> {
 
 // ─── Check entitlement ───────────────────────────────────────────────────────
 
+/**
+ * Asks the server whether this installation still holds one of the account's
+ * device slots.
+ *
+ * Fails open on any error: a network blip must not revoke access somebody paid
+ * for. The cap is a deterrent against passing an account around, not a security
+ * boundary worth locking out real customers over.
+ */
+async function holdsDeviceSlot(userId: string): Promise<boolean> {
+    try {
+        const { getInstallId } = await import('./quota');
+        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+        const anonKey     = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+
+        const res = await fetch(
+            `${supabaseUrl}/functions/v1/check-entitlement` +
+            `?user_id=${encodeURIComponent(userId)}` +
+            `&install_id=${encodeURIComponent(await getInstallId())}`,
+            { headers: { Authorization: `Bearer ${anonKey}`, apikey: anonKey } },
+        );
+
+        if (!res.ok) return true;
+
+        const { reason } = await res.json();
+        return reason !== 'device_limit';
+    } catch {
+        return true;
+    }
+}
+
 export async function checkProEntitlement(userId?: string): Promise<'free' | 'pro' | 'lifetime'> {
     if (isNative) {
         try {
@@ -107,6 +137,14 @@ export async function checkProEntitlement(userId?: string): Promise<'free' | 'pr
             const entitlement = info.entitlements.active[ENTITLEMENT_ID];
 
             if (!entitlement) return 'free';
+
+            // RevenueCat is authoritative on whether a purchase exists, but it
+            // has no notion of how many installs share it, so the cap has to be
+            // checked separately.
+            if (userId && !(await holdsDeviceSlot(userId))) {
+                console.log('[Purchases] Device limit reached for this install');
+                return 'free';
+            }
 
             const isLifetime = entitlement.productIdentifier.includes('lifetime');
             return isLifetime ? 'lifetime' : 'pro';
@@ -122,10 +160,13 @@ export async function checkProEntitlement(userId?: string): Promise<'free' | 'pr
         }
 
         try {
+            const { getInstallId } = await import('./quota');
             const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
             const anonKey    = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
             const res = await fetch(
-                `${supabaseUrl}/functions/v1/check-entitlement?user_id=${encodeURIComponent(userId)}`,
+                `${supabaseUrl}/functions/v1/check-entitlement` +
+                `?user_id=${encodeURIComponent(userId)}` +
+                `&install_id=${encodeURIComponent(await getInstallId())}`,
                 {
                     headers: {
                         'Authorization': `Bearer ${anonKey}`,

@@ -65,6 +65,45 @@ async function getDeviceId(): Promise<string | null> {
     return cachedDeviceId;
 }
 
+// ─── Install id ──────────────────────────────────────────────────────────────
+
+const INSTALL_KEY = 'install_id';
+let cachedInstallId: string | null = null;
+
+/**
+ * Identifies this installation for the per-account device cap.
+ *
+ * Distinct from the device id: that one is issued by the OS, exists only on
+ * native, and is meant to survive a data wipe so the free quota cannot be
+ * reset. This one is ours, works on the web too, and is only used to count how
+ * many installations share a paid account.
+ */
+export async function getInstallId(): Promise<string> {
+    if (cachedInstallId) return cachedInstallId;
+
+    try {
+        const stored = await AsyncStorage.getItem(INSTALL_KEY);
+        if (stored) {
+            cachedInstallId = stored;
+            return stored;
+        }
+    } catch {
+        // fall through and mint a new one
+    }
+
+    const fresh = Array.from({ length: 32 }, () =>
+        Math.floor(Math.random() * 16).toString(16),
+    ).join('');
+
+    cachedInstallId = fresh;
+    try {
+        await AsyncStorage.setItem(INSTALL_KEY, fresh);
+    } catch {
+        // held in memory for this session at least
+    }
+    return fresh;
+}
+
 // ─── Local mirror (fallback only) ────────────────────────────────────────────
 
 function today(): string {
