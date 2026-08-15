@@ -103,6 +103,38 @@ function isManualLinkingDisabled(err: { code?: string; message?: string } | null
     return msg.includes('manual linking') && msg.includes('disabled');
 }
 
+/**
+ * Reads the auth payload out of a callback URL.
+ *
+ * Where it lives depends on the flow: PKCE returns `?code=...` in the query,
+ * the implicit flow returns `#access_token=...` in the fragment, and failures
+ * come back as `error`/`error_description` in either. Reading both is simpler
+ * than depending on which flow the project is configured for — and expo's
+ * Linking.parse only exposes the query, so the fragment case looked like an
+ * empty callback.
+ */
+function parseCallback(url: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    const match = url.match(/^[^?#]*(?:\?([^#]*))?(?:#(.*))?$/);
+    if (!match) return out;
+
+    for (const section of [match[1], match[2]]) {
+        if (!section) continue;
+        for (const pair of section.split('&')) {
+            if (!pair) continue;
+            const idx = pair.indexOf('=');
+            const key = idx === -1 ? pair : pair.slice(0, idx);
+            const value = idx === -1 ? '' : pair.slice(idx + 1);
+            try {
+                out[decodeURIComponent(key)] = decodeURIComponent(value);
+            } catch {
+                out[key] = value;
+            }
+        }
+    }
+    return out;
+}
+
 async function runOAuth(mode: 'link' | 'signin'): Promise<AuthResult> {
     const redirectTo = redirectTarget();
 
@@ -133,15 +165,36 @@ async function runOAuth(mode: 'link' | 'signin'): Promise<AuthResult> {
         return { success: false, cancelled: true, error: 'cancelled' };
     }
 
-    const code = Linking.parse(result.url).queryParams?.code;
-    if (typeof code !== 'string') {
-        return { success: false, error: 'No authorization code in callback' };
+    const params = parseCallback(result.url);
+
+    // Supabase reports refusals (bad redirect, provider error) in the URL itself.
+    if (params.error || params.error_code) {
+        return {
+            success: false,
+            error: params.error_description || params.error || params.error_code,
+            errorCode: params.error_code || params.error,
+        };
     }
 
-    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-    if (exchangeError) return { success: false, error: exchangeError.message };
+    if (params.code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(params.code);
+        if (exchangeError) return { success: false, error: exchangeError.message };
+        return { success: true };
+    }
 
-    return { success: true };
+    if (params.access_token && params.refresh_token) {
+        const { error: sessionError } = await supabase.auth.setSession({
+            access_token: params.access_token,
+            refresh_token: params.refresh_token,
+        });
+        if (sessionError) return { success: false, error: sessionError.message };
+        return { success: true };
+    }
+
+    // Nothing usable came back. Name the keys that did arrive — never their
+    // values, which would put tokens in an alert box.
+    const seen = Object.keys(params).join(', ') || 'none';
+    return { success: false, error: `Callback carried no credentials (received: ${seen})` };
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
