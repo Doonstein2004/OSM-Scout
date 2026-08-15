@@ -402,7 +402,7 @@ export default function ScoutScreen() {
                 <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2 pl-1">{t('age_promise')}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4" contentContainerStyle={{ gap: 8, paddingRight: 20 }}>
                     {['<20', '20-24', '25-29', '30-34', '>34'].map(age => (
-                        <TouchableOpacity key={age} onPress={() => toggleArrayItem(setFilterAge, age)}>
+                        <TouchableOpacity key={age} onPress={() => toggleArrayItem(setFilterAge, age)} style={{ width: 68 }}>
                             <View style={{ width: 68, height: 40, justifyContent: 'center', alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: filterAge.includes(age) ? 'rgba(16,185,129,0.6)' : 'rgba(255,255,255,0.1)', backgroundColor: filterAge.includes(age) ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)' }}>
                                 <Text style={{ fontSize: 12, fontWeight: filterAge.includes(age) ? '700' : '400', color: filterAge.includes(age) ? '#34d399' : '#cbd5e1' }}>
                                     {age}

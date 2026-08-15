@@ -424,7 +424,13 @@ export default function PaywallModal() {
                                             ? 'bg-amber-500 shadow-amber-500/30'
                                             : 'bg-emerald-500 shadow-emerald-500/30'
                                     }`}>
-                                        <Text className="text-black font-black text-sm tracking-widest uppercase">
+                                        <Text
+                                            numberOfLines={1}
+                                            adjustsFontSizeToFit
+                                            minimumFontScale={0.6}
+                                            className="text-black font-black text-sm uppercase"
+                                            style={{ paddingHorizontal: 12, width: '100%', textAlign: 'center' }}
+                                        >
                                             {loading
                                                 ? t('cta_processing')
                                                 : selectedPlan === 'lifetime'
