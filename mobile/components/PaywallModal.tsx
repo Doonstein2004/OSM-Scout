@@ -7,6 +7,7 @@ import { useSubscription } from '../context/SubscriptionContext';
 import { purchaseMonthly, purchaseLifetime, restorePurchases, checkProEntitlement, getPaywallPrices, PaywallPrices } from '../lib/purchases';
 import { getOrCreateUserId } from '../lib/supabase';
 import { Analytics } from '../lib/analytics';
+import GoogleAccountButton from './GoogleAccountButton';
 import * as Linking from 'expo-linking';
 
 interface Feature {
@@ -454,6 +455,18 @@ export default function PaywallModal() {
                                 <Text style={{ fontSize: 18 }}>💜</Text>
                             </View>
                         </TouchableOpacity>
+
+                        {/* ── Already bought? ───────────────────────────── */}
+                        <View className="mx-5 mt-4">
+                            <View className="flex-row items-center gap-3 mb-3">
+                                <View className="flex-1 h-px bg-white/10" />
+                                <Text className="text-slate-600 text-[9px] font-black uppercase tracking-widest">
+                                    {t('auth_divider') || '¿Ya tienes cuenta?'}
+                                </Text>
+                                <View className="flex-1 h-px bg-white/10" />
+                            </View>
+                            <GoogleAccountButton variant="recover" />
+                        </View>
 
                         {/* ── Footer ────────────────────────────────────── */}
                         <View className="items-center mt-4 px-6 gap-2">

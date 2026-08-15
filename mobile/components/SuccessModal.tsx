@@ -4,6 +4,7 @@ import { BlurView } from 'expo-blur';
 import { useTranslation } from 'react-i18next';
 import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { useSubscription } from '../context/SubscriptionContext';
+import GoogleAccountButton from './GoogleAccountButton';
 
 const SuccessModal = () => {
     const { t } = useTranslation();
@@ -93,8 +94,22 @@ const SuccessModal = () => {
                                 </View>
                             </View>
 
+                            {/* Offered here because this is the one moment we know
+                                there is a purchase worth protecting. */}
+                            <Animated.View entering={FadeInUp.delay(1050)} className="w-full mb-5">
+                                <View className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                                    <Text className="text-white text-xs font-black uppercase tracking-widest mb-1 text-center">
+                                        {t('auth_protect_title') || 'Protege tu compra'}
+                                    </Text>
+                                    <Text className="text-slate-400 text-[11px] text-center leading-4 mb-3">
+                                        {t('auth_protect_desc') || 'Sin vincular una cuenta, perderás el acceso si borras los datos de la app o cambias de dispositivo.'}
+                                    </Text>
+                                    <GoogleAccountButton variant="protect" compact />
+                                </View>
+                            </Animated.View>
+
                             <Animated.View entering={FadeInUp.delay(1200)} className="w-full">
-                                <TouchableOpacity 
+                                <TouchableOpacity
                                     onPress={hideSuccess}
                                     activeOpacity={0.8}
                                     className="w-full bg-emerald-500 py-5 rounded-2xl items-center shadow-lg shadow-emerald-500/30"
