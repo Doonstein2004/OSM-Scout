@@ -1,7 +1,43 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.7';
 
 const LIFETIME_PRICE_ID = 'price_1U4M4oAHcKQQsUWmGPFML5aB';
 const ENTITLEMENT_ID    = 'pro_access';
+
+/**
+ * Records who bought what, keyed by the email Stripe collected at checkout.
+ *
+ * Web identities are anonymous Supabase sessions living in browser storage. If
+ * that storage is cleared the user gets a brand new id and RevenueCat no longer
+ * associates them with their purchase. This mapping is what lets them prove
+ * ownership later (via email OTP) and have the entitlement re-granted.
+ */
+async function recordPurchase(
+    email: string,
+    rcUserId: string,
+    plan: 'pro' | 'lifetime',
+    stripeSessionId: string,
+): Promise<void> {
+    try {
+        const admin = createClient(
+            Deno.env.get('SUPABASE_URL')!,
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+        );
+
+        const { error } = await admin
+            .from('web_purchases')
+            .upsert(
+                { email, rc_user_id: rcUserId, plan, stripe_session_id: stripeSessionId },
+                { onConflict: 'stripe_session_id' },
+            );
+
+        if (error) console.error('recordPurchase failed:', error.message);
+        else       console.log(`📝 Recorded ${plan} purchase for ${email}`);
+    } catch (e) {
+        // Never fail the webhook over bookkeeping — the entitlement grant matters more.
+        console.error('recordPurchase threw:', e);
+    }
+}
 
 async function verifyStripeSignature(
     payload: string,
@@ -61,8 +97,10 @@ serve(async (req) => {
         });
     }
 
+    // Both modes are recorded for recovery purposes; only one-time payments
+    // need an entitlement granted here (see below).
     const session = event.data?.object;
-    if (!session || session.mode !== 'payment' || session.payment_status !== 'paid') {
+    if (!session || session.payment_status !== 'paid') {
         return new Response(JSON.stringify({ received: true }), {
             headers: { 'Content-Type': 'application/json' },
         });
@@ -91,8 +129,17 @@ serve(async (req) => {
     const lineData = await lineRes.json();
     const priceId = lineData.data?.[0]?.price?.id;
 
-    if (priceId !== LIFETIME_PRICE_ID) {
-        // Monthly subscriptions are handled by RevenueCat's own webhook
+    const isLifetime = priceId === LIFETIME_PRICE_ID;
+    const email      = session.customer_details?.email ?? session.customer_email ?? null;
+
+    if (email) {
+        await recordPurchase(email, userId, isLifetime ? 'lifetime' : 'pro', session.id);
+    } else {
+        console.warn('No email on session', session.id, '— purchase will not be recoverable');
+    }
+
+    if (!isLifetime) {
+        // Monthly subscriptions are activated by RevenueCat's own webhook.
         return new Response(JSON.stringify({ received: true }), {
             headers: { 'Content-Type': 'application/json' },
         });

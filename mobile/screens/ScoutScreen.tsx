@@ -105,7 +105,7 @@ export default function ScoutScreen() {
         nationalities, leagues, clubs, openSelector, formatPrice, getEstMultiplier
     } = useStore();
 
-    const { canSearch, incrementSearchCount, showPaywall, isPro, dailySearchesUsed, limits } = useSubscription();
+    const { canSearch, consumeSearch, showPaywall, isPro, dailySearchesUsed, limits } = useSubscription();
 
     const canSaveFilter = isPro || limits.savedFilters === -1 || savedFilters.length < limits.savedFilters;
 
@@ -139,19 +139,20 @@ export default function ScoutScreen() {
     async function fetchPlayers(targetPage = page, isReset = false) {
         if (!isOnline) { Alert.alert('Sin conexión', 'Está viendo resultados en caché.'); return; }
         
+        if ((loading || !hasMore) && !isReset) return;
+
         if (isReset) {
-            if (!canSearch) {
+            // Server-enforced quota: this checks and spends in one atomic call,
+            // so there is no client-side state left to tamper with.
+            const allowed = await consumeSearch();
+            if (!allowed) {
                 Analytics.trackLimitReached('searches');
                 showPaywall(t('paywall_reason_search_limit', { count: limits.dailySearches }));
                 return;
             }
             Analytics.trackSearch({ sortBy, sortAscending, filterPos, filterAge, filterQuality });
-        }
-
-        if ((loading || !hasMore) && !isReset) return;
-
-        // ── Freemium gate ────────────────────────────────────────────────
-        if (!canSearch) {
+        } else if (!canSearch) {
+            // Paging further into an existing result set still requires quota.
             showPaywall(t('paywall_reason_search_limit', { count: limits.dailySearches }));
             return;
         }
@@ -226,9 +227,6 @@ export default function ScoutScreen() {
                 setPlayers(merged);
                 setHasMore(mappedData.length === PAGE_SIZE);
                 setPage(targetPage + 1);
-
-                // Increment free search counter
-                if (isReset) await incrementSearchCount();
 
                 // Cache first page of results for offline access
                 if (isReset || targetPage === 0) {

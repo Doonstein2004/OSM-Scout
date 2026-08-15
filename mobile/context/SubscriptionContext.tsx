@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { checkProEntitlement, restorePurchases as rcRestorePurchases } from '../lib/purchases';
+import { peekQuota, spendSearch } from '../lib/quota';
 import { Platform, AppState, AppStateStatus } from 'react-native';
 
 // Plan definition
@@ -53,7 +54,12 @@ interface SubscriptionState {
     isPro: boolean;
     dailySearchesUsed: number;
     canSearch: boolean;
-    incrementSearchCount: () => Promise<void>;
+    /**
+     * Spends one daily search against the server-enforced quota.
+     * Returns false when the caller must abort and show the paywall.
+     */
+    consumeSearch: () => Promise<boolean>;
+    refreshQuota: () => Promise<void>;
     paywallVisible: boolean;
     paywallReason: string;
     showPaywall: (reason?: string) => void;
@@ -68,10 +74,10 @@ interface SubscriptionState {
 
 const SubscriptionContext = createContext<SubscriptionState | undefined>(undefined);
 
+// The daily counter keys now live in lib/quota.ts, which owns the local mirror
+// of the server-side quota.
 const STORAGE_KEYS = {
     plan: 'subscription_plan',
-    searchCount: 'daily_search_count',
-    searchDate: 'daily_search_date',
 } as const;
 
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
@@ -91,26 +97,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         const loadState = async () => {
             try {
-                const [storedPlan, storedCount, storedDate] = await Promise.all([
-                    AsyncStorage.getItem(STORAGE_KEYS.plan),
-                    AsyncStorage.getItem(STORAGE_KEYS.searchCount),
-                    AsyncStorage.getItem(STORAGE_KEYS.searchDate),
-                ]);
+                const storedPlan = await AsyncStorage.getItem(STORAGE_KEYS.plan);
 
                 if (storedPlan) {
                     setPlanState(storedPlan as Plan);
                     planRef.current = storedPlan as Plan;
-                }
-
-                const today = new Date().toDateString();
-                if (storedDate === today && storedCount) {
-                    setDailySearchesUsed(parseInt(storedCount, 10));
-                } else {
-                    setDailySearchesUsed(0);
-                    await AsyncStorage.multiSet([
-                        [STORAGE_KEYS.searchCount, '0'],
-                        [STORAGE_KEYS.searchDate, today],
-                    ]);
                 }
 
                 const { data: { session } } = await (await import('../lib/supabase')).supabase.auth.getSession();
@@ -119,6 +110,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
                 if (latestPlan !== (storedPlan as Plan)) {
                     await setPlan(latestPlan);
                 }
+
+                // Authoritative usage from the server — survives clearing app storage
+                const quota = await peekQuota();
+                setDailySearchesUsed(quota.used);
             } catch (e) {
                 console.error('[Subscription] Error loading state', e);
             }
@@ -216,14 +211,26 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         }
     }, [isTransitioning, paywallVisible]);
 
-    const incrementSearchCount = async () => {
-        if (isPro) return;
-        const next = dailySearchesUsed + 1;
-        setDailySearchesUsed(next);
-        await AsyncStorage.multiSet([
-            [STORAGE_KEYS.searchCount, next.toString()],
-            [STORAGE_KEYS.searchDate, new Date().toDateString()],
-        ]);
+    const consumeSearch = async (): Promise<boolean> => {
+        if (isPro) return true;
+
+        const quota = await spendSearch();
+        setDailySearchesUsed(quota.used);
+
+        // The server may know about an entitlement the client had not seen yet
+        // (e.g. a purchase completed on another device).
+        if (quota.plan !== 'free') {
+            await setPlan(quota.plan);
+            return true;
+        }
+
+        return quota.allowed;
+    };
+
+    const refreshQuota = async (): Promise<void> => {
+        const quota = await peekQuota();
+        setDailySearchesUsed(quota.used);
+        if (quota.plan !== 'free') await setPlan(quota.plan);
     };
 
     const showPaywall = (reason = '') => {
@@ -272,7 +279,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
             isPro,
             dailySearchesUsed,
             canSearch,
-            incrementSearchCount,
+            consumeSearch,
+            refreshQuota,
             paywallVisible,
             paywallReason,
             showPaywall,
