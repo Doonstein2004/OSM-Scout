@@ -24,18 +24,18 @@ const PlayerCard = memo(({ player, isTarget, onToggleTarget, formatPrice, getEst
                 <Surface className="p-4 w-full" style={{ backgroundColor: 'transparent' }}>
                     <View className="flex-row items-center justify-between mb-3 w-full">
                         <View className="flex-row items-center flex-1 pr-2">
-                            <View className="items-center mr-3 w-16">
+                            <View className="items-center mr-3" style={{ width: 56 }}>
                                 <View className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 justify-center items-center">
                                     <Text className="text-emerald-400 font-black text-xl">{player.overall}</Text>
                                 </View>
-                                <View className="flex-row items-center justify-between w-full mt-1.5 px-0.5">
-                                    <View className="bg-rose-500/20 rounded-md px-1.5 py-0.5"><Text className="text-rose-400 text-[8px] font-black">AT {player.attack !== undefined ? player.attack : '-'}</Text></View>
-                                    <View className="bg-blue-500/20 rounded-md px-1.5 py-0.5"><Text className="text-blue-400 text-[8px] font-black">DE {player.defense !== undefined ? player.defense : '-'}</Text></View>
-                                </View>
                             </View>
-                            <View className="flex-1 pr-1">
+                            <View className="flex-1 pr-1" style={{ overflow: 'hidden' }}>
                                 <Text className="text-white font-bold text-lg leading-tight" numberOfLines={1}>{player.name}</Text>
-                                <Text className="text-emerald-300 font-black text-[10px] uppercase my-0.5 tracking-wider">{t(player.detailed_position)} • {player.age} {t('years')}</Text>
+                                <View className="flex-row items-center gap-1.5 my-0.5">
+                                    <Text className="text-emerald-300 font-black text-[10px] uppercase tracking-wider" numberOfLines={1}>{t(player.detailed_position)} • {player.age}a</Text>
+                                    <View className="bg-rose-500/20 rounded px-1 py-0.5"><Text className="text-rose-400 text-[8px] font-black">AT {player.attack ?? '-'}</Text></View>
+                                    <View className="bg-blue-500/20 rounded px-1 py-0.5"><Text className="text-blue-400 text-[8px] font-black">DE {player.defense ?? '-'}</Text></View>
+                                </View>
                                 <Text className="text-slate-400 text-[10px]" numberOfLines={1}>{getFlag(player.nationality)} {player.nationality}</Text>
                             </View>
                         </View>
@@ -403,8 +403,8 @@ export default function ScoutScreen() {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4" contentContainerStyle={{ gap: 8, paddingRight: 20 }}>
                     {['<20', '20-24', '25-29', '30-34', '>34'].map(age => (
                         <TouchableOpacity key={age} onPress={() => toggleArrayItem(setFilterAge, age)}>
-                            <View style={{ minWidth: 60 }} className={`border rounded-xl h-10 px-4 justify-center items-center ${filterAge.includes(age) ? 'bg-emerald-500/20 border-emerald-500/60 shadow-lg shadow-emerald-500/20' : 'bg-white/5 border-white/10'}`}>
-                                <Text className={`${filterAge.includes(age) ? 'text-emerald-400 font-bold' : 'text-slate-300'} text-xs`}>
+                            <View style={{ width: 68, height: 40, justifyContent: 'center', alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: filterAge.includes(age) ? 'rgba(16,185,129,0.6)' : 'rgba(255,255,255,0.1)', backgroundColor: filterAge.includes(age) ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)' }}>
+                                <Text style={{ fontSize: 12, fontWeight: filterAge.includes(age) ? '700' : '400', color: filterAge.includes(age) ? '#34d399' : '#cbd5e1' }}>
                                     {age}
                                 </Text>
                             </View>
