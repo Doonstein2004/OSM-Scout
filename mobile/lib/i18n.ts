@@ -248,7 +248,20 @@ const resources = {
       "lists_upgrade_cta": "Upgrade to PRO to save more filters →",
       "lists_pro_pitch": "PRO = unlimited lists. Tap to see plans.",
       "list_locked_label": "Locked list — Upgrade to PRO",
-      "unlock_pro_cta": "⚡ Unlock PRO"
+      "unlock_pro_cta": "⚡ Unlock PRO",
+      "auth_protect_title": "Protect your purchase",
+      "auth_protect_desc": "Without a linked account you will lose access if you clear the app data or switch devices.",
+      "auth_protect_cta": "Protect my purchase",
+      "auth_protect_hint": "Link your account so you keep access on any device.",
+      "auth_recover_cta": "Already bought? Recover",
+      "auth_recover_hint": "Sign in with the account you used when you bought.",
+      "auth_divider": "Already have an account?",
+      "auth_protected": "Account protected",
+      "auth_linked_title": "Account protected",
+      "auth_linked_desc": "Your purchase is now linked to your Google account. You can recover it on any device.",
+      "auth_recovered_title": "Account recovered",
+      "auth_recovered_desc": "We restored your account. If you had an active purchase, it is available again.",
+      "auth_error_title": "Could not continue"
     }
   },
   es: {
@@ -495,7 +508,20 @@ const resources = {
       "lists_upgrade_cta": "Actualiza a PRO para guardar más filtros →",
       "lists_pro_pitch": "PRO = listas ilimitadas. Toca para ver planes.",
       "list_locked_label": "Lista bloqueada — Actualiza a PRO",
-      "unlock_pro_cta": "⚡ Desbloquear PRO"
+      "unlock_pro_cta": "⚡ Desbloquear PRO",
+      "auth_protect_title": "Protege tu compra",
+      "auth_protect_desc": "Sin una cuenta vinculada perderás el acceso si borras los datos de la app o cambias de dispositivo.",
+      "auth_protect_cta": "Proteger mi compra",
+      "auth_protect_hint": "Vincula tu cuenta para no perder el acceso en ningún dispositivo.",
+      "auth_recover_cta": "Ya compré, recuperar",
+      "auth_recover_hint": "Inicia sesión con la cuenta que usaste al comprar.",
+      "auth_divider": "¿Ya tienes cuenta?",
+      "auth_protected": "Cuenta protegida",
+      "auth_linked_title": "Cuenta protegida",
+      "auth_linked_desc": "Tu compra quedó vinculada a tu cuenta de Google. Podrás recuperarla en cualquier dispositivo.",
+      "auth_recovered_title": "Cuenta recuperada",
+      "auth_recovered_desc": "Hemos restaurado tu cuenta. Si tenías una compra activa, ya está disponible.",
+      "auth_error_title": "No se pudo continuar"
     }
   },
   pt: {
@@ -743,7 +769,20 @@ const resources = {
       "lists_upgrade_cta": "Atualize para PRO para salvar mais filtros →",
       "lists_pro_pitch": "PRO = listas ilimitadas. Toque para ver os planos.",
       "list_locked_label": "Lista bloqueada — Atualize para PRO",
-      "unlock_pro_cta": "⚡ Desbloquear PRO"
+      "unlock_pro_cta": "⚡ Desbloquear PRO",
+      "auth_protect_title": "Proteja sua compra",
+      "auth_protect_desc": "Sem uma conta vinculada você perde o acesso se limpar os dados do app ou trocar de aparelho.",
+      "auth_protect_cta": "Proteger minha compra",
+      "auth_protect_hint": "Vincule sua conta para não perder o acesso em nenhum aparelho.",
+      "auth_recover_cta": "Já comprei, recuperar",
+      "auth_recover_hint": "Entre com a conta que usou na compra.",
+      "auth_divider": "Já tem conta?",
+      "auth_protected": "Conta protegida",
+      "auth_linked_title": "Conta protegida",
+      "auth_linked_desc": "Sua compra ficou vinculada à sua conta Google. Você poderá recuperá-la em qualquer aparelho.",
+      "auth_recovered_title": "Conta recuperada",
+      "auth_recovered_desc": "Restauramos sua conta. Se você tinha uma compra ativa, ela já está disponível.",
+      "auth_error_title": "Não foi possível continuar"
     }
   }
 
