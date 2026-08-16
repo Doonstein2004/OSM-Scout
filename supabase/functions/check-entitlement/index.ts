@@ -127,12 +127,15 @@ async function claimTeamAccess(
             return false;
         }
 
-        if (!row.granted_at) {
-            await admin
-                .from('team_access')
-                .update({ granted_at: new Date().toISOString() })
-                .ilike('email', email);
-        }
+        // Recorded so the grant can be withdrawn later; without the account id
+        // a revoke could only stop re-issuing, not undo what was issued.
+        await admin
+            .from('team_access')
+            .update({
+                granted_at: row.granted_at ?? new Date().toISOString(),
+                granted_to: userId,
+            })
+            .ilike('email', email);
 
         console.log(`🎁 Team access granted to ${email}`);
         return true;

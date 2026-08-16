@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../lib/i18n';
@@ -12,15 +12,20 @@ export default function TabLayout() {
   const { targetPlayers } = useStore();
   const insets = useSafeAreaInsets();
   const { isPro, showPaywall } = useSubscription();
+  const router = useRouter();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#020617' }} edges={['top']}>
       {/* Global Header */}
       <View className="px-6 pt-2 pb-4 border-b border-white/10 flex-row justify-between items-center bg-slate-950">
-        <TouchableOpacity 
-          className="flex-1 mr-4" 
+        <TouchableOpacity
+          className="flex-1 mr-4"
           activeOpacity={0.7}
           onPress={() => !isPro && showPaywall('header')}
+          // Quiet way in to team access. The screen itself is worthless without
+          // an admin token — the server decides that, not this gesture.
+          onLongPress={() => router.push('/admin')}
+          delayLongPress={800}
         >
           <Text className="text-2xl font-black text-white tracking-tighter" numberOfLines={1} adjustsFontSizeToFit>
             OSM SCOUT <Text className="text-emerald-400">PRO</Text>
