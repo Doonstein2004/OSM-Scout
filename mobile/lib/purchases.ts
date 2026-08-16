@@ -69,6 +69,30 @@ const isNative = Platform.OS === 'android' || Platform.OS === 'ios';
 
 let isRCInitialized = false;
 
+/**
+ * Resolves once RevenueCat has been configured and the user logged in.
+ *
+ * Startup runs two independent effects: one initialises RevenueCat, the other
+ * checks the entitlement. Both are async and neither waits for the other, so
+ * the check could reach getCustomerInfo before logIn had bound the account —
+ * reading the *anonymous* RevenueCat user, finding no purchase, and persisting
+ * 'free'. The app then looked unsubscribed until the user hit "restore", which
+ * re-attached the Play purchase to the current id and made it work again.
+ *
+ * Created eagerly at module scope so a caller can await it even if it runs
+ * before initializePurchases() does.
+ */
+let resolveReady: (() => void) | null = null;
+const rcReady: Promise<void> = new Promise(resolve => { resolveReady = resolve; });
+
+/** Never block the UI indefinitely on a dependency that may fail outright. */
+function awaitRC(timeoutMs = 8000): Promise<void> {
+    return Promise.race([
+        rcReady,
+        new Promise<void>(resolve => setTimeout(resolve, timeoutMs)),
+    ]);
+}
+
 export async function initializePurchases(userId?: string): Promise<void> {
     if (!isNative) return;
 
@@ -87,13 +111,17 @@ export async function initializePurchases(userId?: string): Promise<void> {
         }
 
         if (userId) {
-            const { loggedIn, customerInfo } = await Purchases.logIn(userId);
+            const { customerInfo } = await Purchases.logIn(userId);
             console.log('[Purchases] Logged in user:', userId, 'isPro:', !!customerInfo.entitlements.active[ENTITLEMENT_ID]);
         }
 
         console.log('[Purchases] RevenueCat initialized');
     } catch (e) {
         console.error('[Purchases] init error:', e);
+    } finally {
+        // Released even on failure: a caller blocked here would be worse than
+        // one that proceeds and reports no entitlement.
+        resolveReady?.();
     }
 }
 
@@ -155,6 +183,10 @@ async function askServer(userId: string): Promise<ServerVerdict> {
 export async function checkProEntitlement(userId?: string): Promise<'free' | 'pro' | 'lifetime'> {
     if (isNative) {
         try {
+            // Without this the check can outrun logIn and read the anonymous
+            // RevenueCat user, which owns nothing.
+            await awaitRC();
+
             const Purchases = (await import('react-native-purchases')).default;
             const info = await Purchases.getCustomerInfo();
             const entitlement = info.entitlements.active[ENTITLEMENT_ID];
@@ -368,6 +400,8 @@ export async function restorePurchases(): Promise<PurchaseResult> {
     }
 
     try {
+        await awaitRC();
+
         const Purchases = (await import('react-native-purchases')).default;
         const info = await Purchases.restorePurchases();
         const active = info.entitlements.active[ENTITLEMENT_ID];
