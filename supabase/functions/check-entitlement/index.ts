@@ -47,6 +47,101 @@ async function holdsDeviceSlot(userId: string, installId: string): Promise<boole
     }
 }
 
+/**
+ * Reads the caller's verified email from their access token.
+ *
+ * The email has to come from the token, never from a parameter: complimentary
+ * access is granted by email, so a client that could name its own address could
+ * grant itself PRO.
+ *
+ * Returns null for anonymous sessions and for older clients that still send the
+ * anon key instead of a user token — those simply skip the team check rather
+ * than failing, so an outdated app keeps working.
+ */
+async function verifiedEmail(authHeader: string | null): Promise<string | null> {
+    if (!authHeader) return null;
+
+    try {
+        const client = createClient(
+            Deno.env.get('SUPABASE_URL')!,
+            Deno.env.get('SUPABASE_ANON_KEY')!,
+            { global: { headers: { Authorization: authHeader } } },
+        );
+        const { data: { user } } = await client.auth.getUser();
+        return user?.email ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Grants complimentary PRO if this address is on the team list.
+ *
+ * The grant is written to RevenueCat rather than returned straight from here,
+ * so RevenueCat remains the single source of truth: the native SDK then reports
+ * the entitlement like any other purchase, and there is no parallel notion of
+ * "free access" for the client to get wrong. It also means the grant shows up
+ * in the RevenueCat dashboard alongside real customers.
+ *
+ * Returns true when the caller should be treated as entitled.
+ */
+async function claimTeamAccess(
+    userId: string,
+    email: string,
+    rcSecretKey: string,
+): Promise<boolean> {
+    try {
+        const admin = createClient(
+            Deno.env.get('SUPABASE_URL')!,
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+        );
+
+        const { data: row, error } = await admin
+            .from('team_access')
+            .select('email, granted_at')
+            .ilike('email', email)
+            .maybeSingle();
+
+        if (error) {
+            console.error('team_access lookup failed:', error.message);
+            return false;
+        }
+        if (!row) return false;
+
+        const rcRes = await fetch(
+            `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(userId)}` +
+            `/entitlements/${ENTITLEMENT_ID}/promotional`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${rcSecretKey}`,
+                    'Content-Type': 'application/json',
+                    'X-Platform': 'web',
+                },
+                body: JSON.stringify({ duration: 'lifetime' }),
+            },
+        );
+
+        if (!rcRes.ok) {
+            console.error(`Team grant failed (${rcRes.status}):`, await rcRes.text());
+            return false;
+        }
+
+        if (!row.granted_at) {
+            await admin
+                .from('team_access')
+                .update({ granted_at: new Date().toISOString() })
+                .ilike('email', email);
+        }
+
+        console.log(`🎁 Team access granted to ${email}`);
+        return true;
+    } catch (e) {
+        console.error('claimTeamAccess threw:', e);
+        return false;
+    }
+}
+
 serve(async (req) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: CORS });
@@ -70,6 +165,24 @@ serve(async (req) => {
         });
     }
 
+    // Anonymous sessions and older clients yield null here and simply skip the
+    // team check; they still get the normal entitlement answer.
+    const email = await verifiedEmail(req.headers.get('Authorization'));
+
+    /** No purchase found — fall back to the team list before refusing. */
+    const freeOrTeam = async () => {
+        if (email && await claimTeamAccess(userId, email, secretKey)) {
+            return new Response(
+                JSON.stringify({ status: 'lifetime', source: 'team' }),
+                { headers: { ...CORS, 'Content-Type': 'application/json' } },
+            );
+        }
+        return new Response(
+            JSON.stringify({ status: 'free' }),
+            { headers: { ...CORS, 'Content-Type': 'application/json' } },
+        );
+    };
+
     try {
         const res = await fetch(`https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(userId)}`, {
             headers: {
@@ -79,11 +192,8 @@ serve(async (req) => {
             },
         });
 
-        if (res.status === 404) {
-            return new Response(JSON.stringify({ status: 'free' }), {
-                headers: { ...CORS, 'Content-Type': 'application/json' },
-            });
-        }
+        // RevenueCat has never seen this id — still a candidate for team access.
+        if (res.status === 404) return await freeOrTeam();
 
         if (!res.ok) {
             const text = await res.text();
@@ -97,20 +207,13 @@ serve(async (req) => {
         const entitlements = data?.subscriber?.entitlements ?? {};
         const entitlement = entitlements[ENTITLEMENT_ID];
 
-        if (!entitlement) {
-            return new Response(JSON.stringify({ status: 'free' }), {
-                headers: { ...CORS, 'Content-Type': 'application/json' },
-            });
-        }
+        if (!entitlement) return await freeOrTeam();
 
         const expiresDate = entitlement.expires_date ? new Date(entitlement.expires_date) : null;
         const isActive = !expiresDate || expiresDate > new Date();
 
-        if (!isActive) {
-            return new Response(JSON.stringify({ status: 'free' }), {
-                headers: { ...CORS, 'Content-Type': 'application/json' },
-            });
-        }
+        // An expired subscription can still be on the team list.
+        if (!isActive) return await freeOrTeam();
 
         const isLifetime =
             entitlement.product_identifier?.includes('lifetime') ||

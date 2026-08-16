@@ -99,33 +99,56 @@ export async function initializePurchases(userId?: string): Promise<void> {
 
 // ─── Check entitlement ───────────────────────────────────────────────────────
 
+interface ServerVerdict {
+    status: 'free' | 'pro' | 'lifetime';
+    /** 'device_limit' when this install lost its slot. */
+    reason?: string;
+    /** 'team' when the entitlement comes from the complimentary access list. */
+    source?: string;
+    /** False when the call itself failed, so callers can decide to fail open. */
+    reached: boolean;
+}
+
 /**
- * Asks the server whether this installation still holds one of the account's
- * device slots.
+ * The server's view of this user's access.
  *
- * Fails open on any error: a network blip must not revoke access somebody paid
- * for. The cap is a deterrent against passing an account around, not a security
- * boundary worth locking out real customers over.
+ * Sends the user's own access token rather than the anon key: the server reads
+ * the email from it to decide complimentary team access, and an address taken
+ * from a parameter could be claimed by anyone.
  */
-async function holdsDeviceSlot(userId: string): Promise<boolean> {
+async function askServer(userId: string): Promise<ServerVerdict> {
     try {
         const { getInstallId } = await import('./quota');
+        const { supabase }     = await import('./supabase');
+
         const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
         const anonKey     = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token ?? anonKey;
 
         const res = await fetch(
             `${supabaseUrl}/functions/v1/check-entitlement` +
             `?user_id=${encodeURIComponent(userId)}` +
             `&install_id=${encodeURIComponent(await getInstallId())}`,
-            { headers: { Authorization: `Bearer ${anonKey}`, apikey: anonKey } },
+            { headers: { Authorization: `Bearer ${token}`, apikey: anonKey } },
         );
 
-        if (!res.ok) return true;
+        if (!res.ok) {
+            console.error(`[Purchases] check-entitlement error: ${res.status}`);
+            return { status: 'free', reached: false };
+        }
 
-        const { reason } = await res.json();
-        return reason !== 'device_limit';
-    } catch {
-        return true;
+        const body = await res.json();
+        return {
+            status: body.status === 'pro' || body.status === 'lifetime' ? body.status : 'free',
+            reason: body.reason,
+            source: body.source,
+            reached: true,
+        };
+    } catch (e) {
+        console.error('[Purchases] check-entitlement fetch error:', e);
+        return { status: 'free', reached: false };
     }
 }
 
@@ -136,14 +159,27 @@ export async function checkProEntitlement(userId?: string): Promise<'free' | 'pr
             const info = await Purchases.getCustomerInfo();
             const entitlement = info.entitlements.active[ENTITLEMENT_ID];
 
-            if (!entitlement) return 'free';
+            if (!entitlement) {
+                // No purchase — but the account may be on the team list, which
+                // only the server can tell us. Anonymous users have no email to
+                // match, so there is nothing to ask about.
+                if (!userId) return 'free';
+                const verdict = await askServer(userId);
+                if (verdict.source === 'team') {
+                    console.log('[Purchases] ✅ Team access');
+                }
+                return verdict.status;
+            }
 
-            // RevenueCat is authoritative on whether a purchase exists, but it
-            // has no notion of how many installs share it, so the cap has to be
-            // checked separately.
-            if (userId && !(await holdsDeviceSlot(userId))) {
-                console.log('[Purchases] Device limit reached for this install');
-                return 'free';
+            // RevenueCat is authoritative on whether a purchase exists, but has
+            // no notion of how many installs share it, so the cap is checked
+            // separately. Fails open when the server is unreachable.
+            if (userId) {
+                const verdict = await askServer(userId);
+                if (verdict.reached && verdict.reason === 'device_limit') {
+                    console.log('[Purchases] Device limit reached for this install');
+                    return 'free';
+                }
             }
 
             const isLifetime = entitlement.productIdentifier.includes('lifetime');
@@ -152,42 +188,17 @@ export async function checkProEntitlement(userId?: string): Promise<'free' | 'pr
             console.error('[Purchases] checkEntitlement error:', e);
             return 'free';
         }
-    } else {
-        // Web check via Supabase Edge Function (secret key stays server-side)
-        if (!userId) {
-            console.warn('[Purchases] userId is missing for web entitlement check');
-            return 'free';
-        }
-
-        try {
-            const { getInstallId } = await import('./quota');
-            const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
-            const anonKey    = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
-            const res = await fetch(
-                `${supabaseUrl}/functions/v1/check-entitlement` +
-                `?user_id=${encodeURIComponent(userId)}` +
-                `&install_id=${encodeURIComponent(await getInstallId())}`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${anonKey}`,
-                        'apikey': anonKey,
-                    },
-                },
-            );
-
-            if (!res.ok) {
-                console.error(`[Purchases] check-entitlement error: ${res.status}`);
-                return 'free';
-            }
-
-            const { status } = await res.json();
-            console.log(`[Purchases] ✅ Web Check: ${status}`);
-            return (status === 'pro' || status === 'lifetime') ? status : 'free';
-        } catch (e) {
-            console.error('[Purchases] Web check fetch error:', e);
-            return 'free';
-        }
     }
+
+    // Web has no local source of truth — the server answers everything.
+    if (!userId) {
+        console.warn('[Purchases] userId is missing for web entitlement check');
+        return 'free';
+    }
+
+    const verdict = await askServer(userId);
+    console.log(`[Purchases] ✅ Web Check: ${verdict.status}${verdict.source ? ` (${verdict.source})` : ''}`);
+    return verdict.status;
 }
 
 // ─── Purchase monthly ────────────────────────────────────────────────────────
