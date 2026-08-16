@@ -6,6 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 
 import { supabase } from '../lib/supabase';
+import { fetchWithTimeout } from '../lib/http';
 
 interface Member {
     email: string;
@@ -28,7 +29,7 @@ async function callAdmin(action: string, payload: Record<string, unknown> = {}) 
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) return { error: 'No session' };
 
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/team-admin`, {
+    const res = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/team-admin`, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${session.access_token}`,

@@ -15,6 +15,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { supabase } from './supabase';
+import { fetchWithTimeout } from './http';
 
 export interface QuotaState {
     allowed: boolean;
@@ -142,7 +143,7 @@ async function callQuota(action: 'peek' | 'consume'): Promise<QuotaState | null>
         const token = session?.access_token;
         if (!token) return null;
 
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/consume-search`, {
+        const res = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/consume-search`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,

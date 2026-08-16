@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, Text, TouchableOpacity, ActivityIndicator, Alert, Linking, Platform } from 'react-native';
 
 import { supabase } from '../lib/supabase';
+import { fetchWithTimeout } from '../lib/http';
 import { getIdentity, signInWithGoogle, type Identity } from '../lib/auth';
 
 const CONTACT = 'danielbello111@gmail.com';
@@ -58,7 +59,7 @@ export default function DeleteAccount() {
                 return;
             }
 
-            const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
+            const res = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/delete-account`, {
                 method: 'POST',
                 headers: {
                     Authorization: `Bearer ${session.access_token}`,

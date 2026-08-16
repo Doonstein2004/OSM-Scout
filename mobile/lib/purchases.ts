@@ -17,6 +17,8 @@ import { Platform } from 'react-native';
 
 import * as Linking from 'expo-linking';
 
+import { fetchWithTimeout } from './http';
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface PurchaseResult {
@@ -155,7 +157,7 @@ async function askServer(userId: string): Promise<ServerVerdict> {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token ?? anonKey;
 
-        const res = await fetch(
+        const res = await fetchWithTimeout(
             `${supabaseUrl}/functions/v1/check-entitlement` +
             `?user_id=${encodeURIComponent(userId)}` +
             `&install_id=${encodeURIComponent(await getInstallId())}`,
@@ -378,7 +380,7 @@ export async function getPaywallPrices(): Promise<PaywallPrices> {
     // Web: fetch from Edge Function
     try {
         const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/get-prices`, {
+        const res = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/get-prices`, {
             headers: {
                 'Authorization': `Bearer ${anonKey}`,
                 'apikey': anonKey,
