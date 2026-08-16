@@ -351,6 +351,34 @@ const FALLBACK_PRICES: PaywallPrices = {
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 
 /**
+ * The user's country, for pricing on the web.
+ *
+ * The server used to infer this from Accept-Language, which is regionless more
+ * often than not — Latin American Spanish arrives as `es-419`, a UN region code
+ * rather than a country, so an Argentinian was indistinguishable from anyone
+ * else and got the dollar default. The client can simply look.
+ */
+function detectRegion(): string | null {
+    try {
+        const candidates: string[] = [];
+
+        if (typeof navigator !== 'undefined') {
+            candidates.push(...(navigator.languages ?? []), navigator.language);
+        }
+        candidates.push(Intl.DateTimeFormat().resolvedOptions().locale);
+
+        for (const locale of candidates) {
+            const region = locale?.split('-')[1]?.toUpperCase();
+            // Two letters only: `419` and friends are regions, not countries.
+            if (region && /^[A-Z]{2}$/.test(region)) return region;
+        }
+    } catch {
+        // fall through
+    }
+    return null;
+}
+
+/**
  * Returns localized prices:
  * - Native: directly from RC offerings (Google Play / App Store)
  * - Web: from Supabase Edge Function → Stripe API (secret key stays server-side)
@@ -380,7 +408,10 @@ export async function getPaywallPrices(): Promise<PaywallPrices> {
     // Web: fetch from Edge Function
     try {
         const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
-        const res = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/get-prices`, {
+        const region  = detectRegion();
+        const query   = region ? `?region=${encodeURIComponent(region)}` : '';
+
+        const res = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/get-prices${query}`, {
             headers: {
                 'Authorization': `Bearer ${anonKey}`,
                 'apikey': anonKey,

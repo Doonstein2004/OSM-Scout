@@ -29,15 +29,43 @@ const REGION_CURRENCY: Record<string, string> = {
     PH: 'PHP', UA: 'UAH',
 };
 
+/**
+ * Pulls a two-letter country out of a locale tag.
+ *
+ * Rejects anything that is not two letters, which is what kept Argentina on
+ * dollars: Latin American Spanish is sent as `es-419`, and `419` is a UN region
+ * code, not a country. It matched nothing in the table and fell through to USD.
+ * A bare `es` has no region at all and did the same.
+ */
+function countryFromLocale(locale: string): string | null {
+    const part = locale.split('-')[1]?.toUpperCase();
+    return part && /^[A-Z]{2}$/.test(part) ? part : null;
+}
+
+/**
+ * The caller's currency, most reliable source first.
+ *
+ * The client knows its own region; the Accept-Language header is a guess that
+ * is frequently regionless. Asking the header first is how this defaulted a
+ * whole continent to dollars.
+ */
 function getCurrencyFromRequest(req: Request): string {
-    const acceptLang = req.headers.get('Accept-Language') ?? 'en-US';
-    // e.g. "pt-BR,pt;q=0.9,en;q=0.8" → "pt-BR" → region "BR"
-    const primaryLocale = acceptLang.split(',')[0].trim();
-    const region = primaryLocale.split('-')[1]?.toUpperCase();
-    // Allow explicit override via query param: ?currency=BRL
     const url = new URL(req.url);
+
     const override = url.searchParams.get('currency')?.toUpperCase();
-    return override ?? (region ? (REGION_CURRENCY[region] ?? 'USD') : 'USD');
+    if (override) return override;
+
+    // Supplied by the client from the device locale.
+    const region = url.searchParams.get('region')?.toUpperCase();
+    if (region && REGION_CURRENCY[region]) return REGION_CURRENCY[region];
+
+    const acceptLang = req.headers.get('Accept-Language') ?? '';
+    for (const entry of acceptLang.split(',')) {
+        const country = countryFromLocale(entry.split(';')[0].trim());
+        if (country && REGION_CURRENCY[country]) return REGION_CURRENCY[country];
+    }
+
+    return 'USD';
 }
 
 async function getExchangeRate(from: string, to: string): Promise<number | null> {
