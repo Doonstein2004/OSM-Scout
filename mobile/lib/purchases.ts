@@ -42,27 +42,10 @@ export const PRODUCT_IDS = {
     lifetime: 'osm_pro_lifetime',             // Android ID
 } as const;
 
-// Stripe Payment Links for Web checkout (BRL-based, Adaptive Pricing converts to other currencies)
-// Set EXPO_PUBLIC_STRIPE_LINK_MONTHLY and EXPO_PUBLIC_STRIPE_LINK_LIFETIME in .env
-// ⚠️ IMPORTANT: These MUST include ?client_reference_id=USER_ID to link to RevenueCat
-export const STRIPE_PAYMENT_LINKS = {
-    monthly:  process.env.EXPO_PUBLIC_STRIPE_LINK_MONTHLY  ?? 'https://buy.stripe.com/3cIbJ0eqC4YObjk58v6wE02',
-    lifetime: process.env.EXPO_PUBLIC_STRIPE_LINK_LIFETIME ?? 'https://buy.stripe.com/3cI00igyK76WafgasP6wE03',
-} as const;
-
-// RevenueCat Billing Checkout URLs (Preferred for Web Billing)
-// For Sandbox/Test, we use the sandbox subdomain or ensure the SDK handles it.
-export const PROJECT_ID = 'projaa7718f5';
-export const RC_CHECKOUT_URLS = {
-    monthly: `https://checkout.revenuecat.com/${PROJECT_ID}/$rc_monthly`,
-    yearly:  `https://checkout.revenuecat.com/${PROJECT_ID}/$rc_annual`,
-    lifetime: `https://checkout.revenuecat.com/${PROJECT_ID}/$rc_lifetime`,
-} as const;
-
-// 💡 TIP: If checkout.revenuecat.com fails with SSL errors (ERR_SSL_VERSION_OR_CIPHER_MISMATCH),
-// we use Stripe Direct Payment Links which are highly compatible. 
-// REVENUECAT STRIPE APP must be installed in Stripe Dashboard to receive events.
-const USE_STRIPE_DIRECT_FOR_WEB = true; // Set to false to use RevenueCat's native Web Billing checkout
+// Web checkout no longer uses static Stripe Payment Links. The session is
+// created by the create-checkout Edge Function so it can carry the App User ID
+// in Stripe metadata, which a Payment Link URL cannot do and which RevenueCat
+// requires to attribute a purchase. Prices live there, next to that logic.
 
 
 // ─── Helper: is native platform with RC support ───────────────────────────────
@@ -235,6 +218,55 @@ export async function checkProEntitlement(userId?: string): Promise<'free' | 'pr
     return verdict.status;
 }
 
+// ─── Web checkout ────────────────────────────────────────────────────────────
+
+/**
+ * Asks the server to open a Stripe Checkout Session.
+ *
+ * Replaces the static Payment Links. RevenueCat takes the App User ID from a
+ * Stripe metadata field — its only other options are an anonymous id or the
+ * Stripe customer id, neither of which maps to our users — and a Payment Link
+ * URL can carry `client_reference_id` but not metadata. Subscription events
+ * therefore reached RevenueCat with nothing identifying the buyer, and web
+ * subscriptions never activated on their own.
+ *
+ * Creating the session server-side also puts the id on `subscription_data`, so
+ * it lands on the subscription itself rather than only the session, and every
+ * later renewal or cancellation stays attributable.
+ */
+async function startWebCheckout(plan: 'monthly' | 'lifetime'): Promise<{ url?: string; error?: string }> {
+    try {
+        const { supabase } = await import('./supabase');
+        const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return { error: 'No session' };
+
+        const returnUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
+
+        const res = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/create-checkout`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+                'apikey': anonKey,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ plan, return_url: returnUrl }),
+        });
+
+        if (!res.ok) {
+            console.error(`[Purchases] create-checkout failed: ${res.status}`);
+            return { error: 'Could not start checkout' };
+        }
+
+        const { url } = await res.json();
+        return url ? { url } : { error: 'No checkout URL returned' };
+    } catch (e) {
+        console.error('[Purchases] create-checkout error:', e);
+        return { error: 'Could not start checkout' };
+    }
+}
+
 // ─── Purchase monthly ────────────────────────────────────────────────────────
 
 export async function purchaseMonthly(userId?: string): Promise<PurchaseResult> {
@@ -244,23 +276,10 @@ export async function purchaseMonthly(userId?: string): Promise<PurchaseResult> 
             return { success: false, error: 'User ID missing' };
         }
 
-        // Use direct redirection to avoid SSL issues with RevenueCat's checkout domain
-        let checkoutUrl: string;
-        
-        if (USE_STRIPE_DIRECT_FOR_WEB) {
-            checkoutUrl = `${STRIPE_PAYMENT_LINKS.monthly}?client_reference_id=${userId}`;
-            console.log('[Purchases] Web Checkout: Using Stripe Direct (Fallback)');
-        } else {
-            const returnUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8081';
-            checkoutUrl = `${RC_CHECKOUT_URLS.monthly}?app_user_id=${userId}&return_url=${encodeURIComponent(returnUrl)}`;
-            console.log('[Purchases] Web Checkout: Using RevenueCat Billing');
-        }
-        
-        return { 
-            success: false, 
-            isRedirecting: true, 
-            url: checkoutUrl 
-        };
+        const checkout = await startWebCheckout('monthly');
+        if (!checkout.url) return { success: false, error: checkout.error };
+
+        return { success: false, isRedirecting: true, url: checkout.url };
     }
 
     try {
@@ -291,23 +310,10 @@ export async function purchaseLifetime(userId?: string): Promise<PurchaseResult>
             return { success: false, error: 'User ID missing' };
         }
 
-        // Use direct redirection
-        let checkoutUrl: string;
+        const checkout = await startWebCheckout('lifetime');
+        if (!checkout.url) return { success: false, error: checkout.error };
 
-        if (USE_STRIPE_DIRECT_FOR_WEB) {
-            checkoutUrl = `${STRIPE_PAYMENT_LINKS.lifetime}?client_reference_id=${userId}`;
-            console.log('[Purchases] Web Checkout: Using Stripe Direct (Fallback)');
-        } else {
-            const returnUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8081';
-            checkoutUrl = `${RC_CHECKOUT_URLS.lifetime}?app_user_id=${userId}&return_url=${encodeURIComponent(returnUrl)}`;
-            console.log('[Purchases] Web Checkout: Using RevenueCat Billing');
-        }
-
-        return { 
-            success: false, 
-            isRedirecting: true, 
-            url: checkoutUrl 
-        };
+        return { success: false, isRedirecting: true, url: checkout.url };
     }
 
 
