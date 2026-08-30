@@ -20,23 +20,29 @@ _RETRYABLE_ERRORS = [
     "502", "503", "504",          # Bad gateway / unavailable
     "522", "524",                  # Cloudflare timeouts (origin timed out)
     "Connection timed out",
+    "timed out",                   # Socket / HTTP read timeouts
+    "Read operation timed out",
+    "The read operation timed out",
+    "ReadTimeout",
+    "ConnectTimeout",
+    "TimeoutException",
     "Bad gateway",
     "10060", "ECONNRESET", "ETIMEDOUT",
     "JSON could not be generated", # Supabase devuelve HTML de error en vez de JSON
 ]
 
-def retry_supabase_call(func, max_retries=5, delay=15):
+def retry_supabase_call(func, max_retries=5, delay=3):
     def wrapper(*args, **kwargs):
         for i in range(max_retries):
             try:
                 return func(*args, **kwargs)
             except Exception as e:
-                err_msg = str(e)
-                is_retryable = any(msg in err_msg for msg in _RETRYABLE_ERRORS)
+                err_msg = str(e).lower()
+                is_retryable = any(msg.lower() in err_msg for msg in _RETRYABLE_ERRORS)
 
                 if is_retryable and i < max_retries - 1:
-                    wait_time = delay * (i + 1)  # backoff: 15s, 30s, 45s, 60s
-                    print(f"  🔌 Error transitorio Supabase (intento {i+1}/{max_retries}): esperando {wait_time}s...")
+                    wait_time = delay * (i + 1)  # backoff: 3s, 6s, 9s, 12s...
+                    print(f"  🔌 Error transitorio Supabase ({e}) (intento {i+1}/{max_retries}): esperando {wait_time}s...")
                     time.sleep(wait_time)
                     continue
                 raise e
@@ -76,13 +82,12 @@ def get_supabase_client():
         return None
 
     try:
-        # Forzar opciones de tiempo de espera y personalización
+        # Aumentar postgrest timeout y habilitar HTTP Keep-Alive (sin Connection: close)
         _supabase_client = create_client(
             url, 
             key,
             options=ClientOptions(
-                postgrest_client_timeout=30,
-                headers={"Connection": "close"}
+                postgrest_client_timeout=60,
             )
         )
         return _supabase_client
