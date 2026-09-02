@@ -138,14 +138,23 @@ export default function ScoutScreen() {
 
     async function fetchPlayers(targetPage = page, isReset = false) {
         if (!isOnline) { Alert.alert('Sin conexión', 'Está viendo resultados en caché.'); return; }
-        
-        if ((loading || !hasMore) && !isReset) return;
+
+        // Also guards a reset: without this, tapping "Buscar" again while the
+        // quota check below is still in flight (no spinner shown yet) fires a
+        // second concurrent search instead of being a no-op.
+        if (loading || (!hasMore && !isReset)) return;
 
         if (isReset) {
+            // Set before the quota round-trip so the spinner appears the
+            // instant the user taps, instead of only once the player query
+            // itself starts — otherwise a slow quota check reads as a frozen
+            // search with no feedback at all.
+            setLoading(true);
             // Server-enforced quota: this checks and spends in one atomic call,
             // so there is no client-side state left to tamper with.
             const allowed = await consumeSearch();
             if (!allowed) {
+                setLoading(false);
                 Analytics.trackLimitReached('searches');
                 showPaywall(t('paywall_reason_search_limit', { count: limits.dailySearches }));
                 return;
@@ -155,16 +164,17 @@ export default function ScoutScreen() {
             // Paging further into an existing result set still requires quota.
             showPaywall(t('paywall_reason_search_limit', { count: limits.dailySearches }));
             return;
+        } else {
+            setLoading(true);
         }
 
-        setLoading(true);
         try {
             const PLAYER_FIELDS = 'id,name,age,overall,attack,defense,position,detailed_position,nationality,value_amount,value_str,club_id';
             const CLUB_FIELDS = 'id,name,league_id,is_world_cup,league:leagues(id,name)';
 
             let query = supabase
                 .from('players')
-                .select(`*, club:clubs!inner(${CLUB_FIELDS})`, { count: 'exact' })
+                .select(`*, club:clubs!inner(${CLUB_FIELDS})`)
                 .eq('club.is_world_cup', false)
                 .limit(PAGE_SIZE);
 

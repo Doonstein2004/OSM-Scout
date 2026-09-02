@@ -2,6 +2,7 @@ import 'react-native-url-polyfill/auto';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
+import { fetchWithTimeout } from './http';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -24,6 +25,14 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     // Only the web build ever lands on an OAuth callback URL directly.
     detectSessionInUrl: isWeb,
     flowType: 'pkce',
+  },
+  global: {
+    // supabase-js's default fetch has no timeout: on a stalled connection
+    // every query (player search, filters, auth) hangs forever with the
+    // spinner stuck on screen. A heavily filtered search can legitimately
+    // take longer than a plain request, so give it more room than the
+    // 12s default used for lighter calls like the quota endpoint.
+    fetch: (input, init) => fetchWithTimeout(input as string, init, 20_000),
   },
 });
 
