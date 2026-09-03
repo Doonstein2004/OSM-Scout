@@ -187,7 +187,6 @@ const resources = {
       "paywall_restore_success_desc": "Your PRO plan has been activated.",
       "paywall_restore_empty_title": "No active purchases",
       "paywall_restore_empty_desc": "We found no active purchases linked to this account.",
-      "paywall_error_title": "Purchase error",
       "paywall_welcome_pro": "Welcome to PRO!",
       "success_feat_1": "Unlimited Smart Scout Analysis",
       "success_feat_2": "Full Fantasy Squad Optimizer",

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, ScrollView, TouchableOpacity, Text, Alert, FlatList } from 'react-native';
 import { Card, Spinner, Input, SearchField, Button, Surface } from 'heroui-native';
 import Animated, { FadeInUp, LinearTransition } from 'react-native-reanimated';
@@ -83,6 +83,8 @@ export default function ScoutScreen() {
     const { t } = useTranslation();
     const { isOnline } = useNetworkStatus();
     const [offlineMeta, setOfflineMeta] = useState<{ filterDesc: string; savedAt: number } | null>(null);
+    const [fetchError, setFetchError] = useState(false);
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const {
         players, setPlayers,
         loading, setLoading,
@@ -128,6 +130,12 @@ export default function ScoutScreen() {
         tryLoadOffline();
     }, [isOnline]);
 
+    // Debounce the free-text filter so filteredPlayers doesn't recompute on every keystroke
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(search), 250);
+        return () => clearTimeout(timer);
+    }, [search]);
+
     // Reset sort only — players are cleared when user explicitly clicks Buscar
     useEffect(() => {
         if (!isOnline) return;
@@ -168,6 +176,7 @@ export default function ScoutScreen() {
             setLoading(true);
         }
 
+        setFetchError(false);
         try {
             const PLAYER_FIELDS = 'id,name,age,overall,attack,defense,position,detailed_position,nationality,value_amount,value_str,club_id';
             const CLUB_FIELDS = 'id,name,league_id,is_world_cup,league:leagues(id,name)';
@@ -249,16 +258,21 @@ export default function ScoutScreen() {
             }
         } catch (e) {
             console.error("Fetch Exception:", e);
+            setFetchError(true);
         } finally {
             setLoading(false);
         }
     }
 
-    const filteredPlayers = players.filter((p: any) =>
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.detailed_position.toLowerCase().includes(search.toLowerCase()) ||
-        (p.club?.name && p.club.name.toLowerCase().includes(search.toLowerCase()))
-    );
+    const filteredPlayers = useMemo(() => {
+        const term = debouncedSearch.toLowerCase();
+        if (!term) return players;
+        return players.filter((p: any) =>
+            (p.name ?? '').toLowerCase().includes(term) ||
+            (p.detailed_position ?? '').toLowerCase().includes(term) ||
+            (p.club?.name ?? '').toLowerCase().includes(term)
+        );
+    }, [players, debouncedSearch]);
 
     const onToggleTarget = (player: any, add: boolean) => {
         if (add) {
@@ -551,23 +565,11 @@ export default function ScoutScreen() {
 
     const ListFooter = () => (
         <View className="px-4 pb-20">
-            {loading ? (
+            {loading && players.length > 0 && (
                 <View className="py-10 justify-center items-center">
                     <Spinner size="lg" className="text-emerald-500" />
                     <Text className="text-white/50 mt-4 font-black tracking-widest text-[10px] uppercase">{t('loading')}</Text>
                 </View>
-            ) : hasMore && players.length > 0 && (
-                <TouchableOpacity
-                    onPress={() => fetchPlayers()}
-                    className="py-6 items-center"
-                    disabled={loading}
-                >
-                    <View className="bg-emerald-500/10 border border-emerald-500/20 px-6 py-3 rounded-2xl flex-row items-center gap-2">
-                        <Text className="text-emerald-500 font-black tracking-widest text-[10px] uppercase">
-                            {t('load_more')}
-                        </Text>
-                    </View>
-                </TouchableOpacity>
             )}
         </View>
     );
@@ -586,7 +588,24 @@ export default function ScoutScreen() {
                     </View>
                 </Animated.View>
             )}
-            
+
+            {/* SEARCH ERROR BANNER */}
+            {fetchError && (
+                <Animated.View entering={FadeInUp} className="mx-4 mt-3 mb-1 px-4 py-3 bg-rose-500/15 border border-rose-500/30 rounded-2xl flex-row items-center gap-3">
+                    <Text className="text-xl">⚠️</Text>
+                    <View className="flex-1">
+                        <Text className="text-rose-400 font-black text-xs uppercase tracking-widest">{t('search_error_title', 'Error al buscar')}</Text>
+                        <Text className="text-rose-300/70 text-[10px] font-medium" numberOfLines={2}>{t('search_error_desc', 'No se pudo completar la búsqueda. Intentá de nuevo.')}</Text>
+                    </View>
+                    <TouchableOpacity
+                        onPress={() => fetchPlayers(0, true)}
+                        className="bg-rose-500/20 border border-rose-500/40 rounded-xl px-3 py-2"
+                    >
+                        <Text className="text-rose-300 font-black text-[10px] uppercase">{t('retry', 'Reintentar')}</Text>
+                    </TouchableOpacity>
+                </Animated.View>
+            )}
+
             <FlatList
                 data={filteredPlayers}
                 keyExtractor={(item, index) => item.id + '-' + index}
@@ -621,6 +640,12 @@ export default function ScoutScreen() {
                 removeClippedSubviews={true}
                 contentContainerStyle={{ paddingBottom: 20 }}
                 className="flex-1 w-full"
+                onEndReachedThreshold={0.5}
+                onEndReached={() => {
+                    // Prefetch the next page as the user nears the end instead of
+                    // making them tap "load more" every time.
+                    if (hasMore && !loading && players.length > 0) fetchPlayers();
+                }}
             />
         </View>
     );
