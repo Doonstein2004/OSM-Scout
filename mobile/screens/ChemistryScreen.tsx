@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Spinner } from 'heroui-native';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../context/StoreContext';
+import { useSubscription } from '../context/SubscriptionContext';
 import { getFlag, toNatStem } from '../lib/flags';
-import { getQualityBounds } from '../lib/scouter';
+import { getQualityBounds, getOSMAgeRange, getAgeBounds, pStrictSuccess } from '../lib/scouter';
+import { Analytics } from '../lib/analytics';
 
 const QUALITY_OPTIONS = ['+100', '85-99', '80-84', '75-79', '70-74', '60-69', '50-59'];
 
@@ -17,6 +19,10 @@ const POSITIONS: { key: string; label: string; icon: string }[] = [
 ];
 
 const SLOTS_PER_SEARCH = 3;
+
+// A broadened League(+Age)+Quality search only replaces the plain filter
+// when it's a genuinely good bet — not just "technically possible".
+const MIN_GOOD_PROBABILITY = 50;
 
 // Mirrors lib/scouter.ts's isWorldStar handling: '+100' isn't a numeric
 // overall range (almost nothing in the scraped data hits overall >= 100),
@@ -39,17 +45,24 @@ interface RoundResult {
     players: any[];
     fillers: any[];
     // When real matches are scarce, the honest search to recommend is
-    // League + Quality (no nationality/position) — the target still turns
-    // up in it, but so do real companions. When that happens, the filter
-    // box has to say so instead of showing a filter that could never
-    // actually surface those companions.
+    // League + Quality (+ Age when it narrows the pool enough to matter) —
+    // the target still turns up in it, but so do real companions. When that
+    // happens, the filter box has to say so instead of showing a filter
+    // that could never actually surface those companions.
     broadenedLeagueName: string | null;
     fillerBracket: string | null;
+    fillerAgeRange: string | null;
+    // Real odds of the target actually appearing in a random 3-candidate
+    // draw from that pool — a big pool means "technically possible" is a
+    // long way from "likely".
+    poolSize: number | null;
+    probability: number | null;
 }
 
 export default function ChemistryScreen() {
     const { t } = useTranslation();
     const { nationalities, openSelector, formatPrice, setFilterNationality, setFilterQuality, setFilterExactQuality, setFilterPos, setActiveTab } = useStore();
+    const { isPro, showPaywall } = useSubscription();
 
     const [planNationality, setPlanNationality] = useState<string | null>(null);
     const [quality, setQuality] = useState('60-69');
@@ -57,6 +70,15 @@ export default function ChemistryScreen() {
     const [loading, setLoading] = useState(false);
     const [rounds, setRounds] = useState<RoundResult[] | null>(null);
     const [error, setError] = useState(false);
+
+    // __DEV__ only: lets you exercise the feature locally without faking a
+    // purchase. Production/EAS builds have __DEV__ false, so the real
+    // paywall gate below always applies there.
+    const unlocked = isPro || __DEV__;
+
+    useEffect(() => {
+        if (!unlocked) Analytics.trackUpsellView('chemistry');
+    }, [unlocked]);
 
     const togglePosition = (key: string) => {
         setSelectedPositions(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]);
@@ -76,7 +98,7 @@ export default function ChemistryScreen() {
         while (true) {
             let query = supabase
                 .from('players')
-                .select('id, name, position, detailed_position, overall, value_amount, value_str, club:clubs!inner(name, is_world_cup, league_id, league:leagues(id, name))')
+                .select('id, name, age, position, detailed_position, overall, value_amount, value_str, club:clubs!inner(name, is_world_cup, league_id, league:leagues(id, name))')
                 .eq('club.is_world_cup', false)
                 .ilike('position', `%${posKey}%`)
                 .order('overall', { ascending: false })
@@ -96,28 +118,35 @@ export default function ChemistryScreen() {
     };
 
     // The real, honest fallback search when the exact nationality+position
-    // filter is too narrow: League + Quality, nothing else. That's a filter
+    // filter is too narrow: League + Quality (+ Age, when given) — a filter
     // that genuinely surfaces the target AND real companions of any
-    // nationality/position — cascading to lower quality brackets only if the
-    // league has nobody else at the current one.
-    const fetchLeaguePool = async (leagueId: any, startBracket: string) => {
+    // nationality/position, cascading to lower quality brackets only if
+    // nobody else in that league qualifies at the current one.
+    const fetchLeaguePool = async (leagueId: any, startBracket: string, ageBracket: string | null) => {
         const startIdx = QUALITY_OPTIONS.indexOf(startBracket);
         const brackets = QUALITY_OPTIONS.slice(startIdx);
         for (const bracket of brackets) {
+            // exact count matters here: it's what the odds are computed
+            // from, and this query is scoped to one league so it's cheap —
+            // nothing like the full-table count removed from Scout search.
             let query = supabase
                 .from('players')
-                .select('id, name, position, detailed_position, overall, value_amount, value_str, club:clubs!inner(name, is_world_cup, league_id)')
+                .select('id, name, position, detailed_position, overall, value_amount, value_str, club:clubs!inner(name, is_world_cup, league_id)', { count: 'exact' })
                 .eq('club.is_world_cup', false)
                 .eq('club.league_id', leagueId)
                 .order('overall', { ascending: false })
                 .limit(30);
             query = applyQualityFilter(query, bracket);
+            if (ageBracket) {
+                const [minA, maxA] = getAgeBounds(ageBracket);
+                query = query.gte('age', minA).lte('age', maxA);
+            }
 
-            const { data, error: qError } = await query;
+            const { data, count, error: qError } = await query;
             if (qError) throw qError;
-            if (data && data.length > 1) return { pool: data, bracket };
+            if (data && data.length > 1) return { pool: data, poolSize: count ?? data.length, bracket };
         }
-        return { pool: [], bracket: startBracket };
+        return { pool: [], poolSize: 0, bracket: startBracket };
     };
 
     const generatePlan = async () => {
@@ -142,19 +171,57 @@ export default function ChemistryScreen() {
                 let fillers: any[] = [];
                 let broadenedLeagueName: string | null = null;
                 let fillerBracket: string | null = null;
+                let fillerAgeRange: string | null = null;
+                let poolSize: number | null = null;
+                let probability: number | null = null;
 
                 if (players.length > 0 && players.length < SLOTS_PER_SEARCH) {
                     const best = players[0]; // best real match, sorted by overall desc
                     const leagueId = best?.club?.league_id;
                     const leagueName = best?.club?.league?.name;
                     if (leagueId) {
-                        const { pool, bracket } = await fetchLeaguePool(leagueId, quality);
                         const targetIds = new Set(players.map((p: any) => p.id));
-                        const companions = pool.filter((p: any) => !targetIds.has(p.id));
-                        if (companions.length > 0) {
-                            fillers = companions.slice(0, SLOTS_PER_SEARCH - players.length);
-                            broadenedLeagueName = leagueName || null;
-                            fillerBracket = bracket;
+                        const ageBracket = best.age != null ? getOSMAgeRange(best.age) : null;
+
+                        // Narrower pool first (same age bracket too) — smaller
+                        // pool means real odds of the target actually coming up.
+                        let { pool, poolSize: size, bracket } = ageBracket
+                            ? await fetchLeaguePool(leagueId, quality, ageBracket)
+                            : { pool: [] as any[], poolSize: 0, bracket: quality };
+                        let usedAge = !!ageBracket;
+                        let companions = pool.filter((p: any) => !targetIds.has(p.id));
+
+                        if (companions.length === 0) {
+                            // Age narrowed it down to nobody else — widen back
+                            // out to League + Quality alone.
+                            const broad = await fetchLeaguePool(leagueId, quality, null);
+                            pool = broad.pool;
+                            size = broad.poolSize;
+                            bracket = broad.bracket;
+                            usedAge = false;
+                            companions = pool.filter((p: any) => !targetIds.has(p.id));
+                        }
+
+                        // The whole point of broadening was to find a search
+                        // that's actually worth running instead of the plain
+                        // one — if the odds of it landing the target are worse
+                        // than just going in narrow (which is what happens the
+                        // moment the pool gets big), it's not a real
+                        // alternative. Only adopt it above a real bar; below
+                        // that, stick with the plain filter and no filler at all.
+                        if (pool.length > 0) {
+                            const prob = Math.round(pStrictSuccess(size, 1) * 100);
+                            if (prob >= MIN_GOOD_PROBABILITY) {
+                                // All of them, not a cherry-picked one or two —
+                                // any of these could be the ones that actually
+                                // come up, not just the highest-overall pick.
+                                fillers = companions;
+                                broadenedLeagueName = leagueName || null;
+                                fillerBracket = bracket;
+                                fillerAgeRange = usedAge ? ageBracket : null;
+                                poolSize = size;
+                                probability = prob;
+                            }
                         }
                     }
                 }
@@ -171,6 +238,9 @@ export default function ChemistryScreen() {
                     fillers,
                     broadenedLeagueName,
                     fillerBracket,
+                    fillerAgeRange,
+                    poolSize,
+                    probability,
                 });
             }
 
@@ -190,6 +260,78 @@ export default function ChemistryScreen() {
         setFilterPos([round.position]);
         setActiveTab('scout');
     };
+
+    // ── PRO gate: render upsell screen for free users ────────────────────
+    if (!unlocked) {
+        return (
+            <ScrollView
+                className="flex-1 w-full bg-[#020617]"
+                contentContainerStyle={{ padding: 24, paddingBottom: 80 }}
+                showsVerticalScrollIndicator={false}
+            >
+                <View className="items-center pt-6 pb-8">
+                    <View className="w-24 h-24 rounded-[32px] bg-indigo-500/10 border border-indigo-500/20 items-center justify-center mb-5">
+                        <Text style={{ fontSize: 44 }}>📋</Text>
+                    </View>
+                    <Text className="text-white font-black text-2xl tracking-tighter mb-2 text-center uppercase">
+                        Plan <Text className="text-indigo-400">de Ojeo</Text>
+                    </Text>
+                    <Text className="text-slate-400 text-sm text-center leading-relaxed px-4">
+                        {t('chemistry_upsell_desc', 'Armá la secuencia completa de búsquedas para construir química de nacionalidad, con la probabilidad real de éxito de cada una.')}
+                    </Text>
+                </View>
+
+                {[
+                    {
+                        icon: '🎯',
+                        titleKey: 'chemistry_upsell_target_title',
+                        titleDefault: 'Plan por nacionalidad',
+                        descKey: 'chemistry_upsell_target_desc',
+                        descDefault: 'Elegí una nacionalidad y calidad, y armá el orden de búsquedas (defensas, medios, delanteros, arquero) para llegar a los 6 jugadores del bono de química.',
+                        color: 'border-emerald-500/30 bg-emerald-500/5',
+                    },
+                    {
+                        icon: '📊',
+                        titleKey: 'chemistry_upsell_prob_title',
+                        titleDefault: 'Probabilidad real, no promesas',
+                        descKey: 'chemistry_upsell_prob_desc',
+                        descDefault: 'La misma matemática de Smart Scout te dice qué tan probable es que tu objetivo salga en una tirada — sin filtros que prometen algo que no van a cumplir.',
+                        color: 'border-indigo-500/30 bg-indigo-500/5',
+                    },
+                    {
+                        icon: '💰',
+                        titleKey: 'chemistry_upsell_budget_title',
+                        titleDefault: 'Presupuesto por ronda',
+                        descKey: 'chemistry_upsell_budget_desc',
+                        descDefault: 'Precio estimado de cada búsqueda, para saber cuánto necesitás ahorrado antes de gastar un ojeador.',
+                        color: 'border-amber-500/30 bg-amber-500/5',
+                    },
+                ].map(f => (
+                    <View key={f.titleKey} className={`border rounded-3xl p-5 mb-4 ${f.color}`}>
+                        <View className="flex-row items-center gap-3 mb-2">
+                            <Text style={{ fontSize: 26 }}>{f.icon}</Text>
+                            <Text className="text-white font-black text-base">{t(f.titleKey, f.titleDefault)}</Text>
+                        </View>
+                        <Text className="text-slate-400 text-sm leading-relaxed">{t(f.descKey, f.descDefault)}</Text>
+                    </View>
+                ))}
+
+                <TouchableOpacity
+                    onPress={() => showPaywall(t('chemistry_upsell_desc', 'Armá la secuencia completa de búsquedas para construir química de nacionalidad, con la probabilidad real de éxito de cada una.'))}
+                    activeOpacity={0.85}
+                    className="mt-2"
+                >
+                    <View className="bg-indigo-500 rounded-3xl h-14 items-center justify-center shadow-xl shadow-indigo-500/30">
+                        <Text className="text-white font-black tracking-widest uppercase text-sm">{t('chemistry_unlock_cta', 'Desbloquear Plan PRO')}</Text>
+                    </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => showPaywall()} className="mt-3 items-center">
+                    <Text className="text-slate-500 text-xs">{t('view_plans')}</Text>
+                </TouchableOpacity>
+            </ScrollView>
+        );
+    }
 
     return (
         <ScrollView className="flex-1 w-full bg-[#020617]" contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
@@ -266,22 +408,32 @@ export default function ChemistryScreen() {
                         </View>
                     </View>
 
-                    {/* The exact filter to punch into the in-game scout search.
-                        When fillers came from a broadened search, this HAS to say
-                        League+Quality instead — that's the filter that actually
-                        produces them, not Nationality+Position. */}
-                    <View className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-3 py-2 mb-3">
-                        <Text className="text-indigo-400 text-[9px] font-black uppercase tracking-widest mb-1">{t('chemistry_filter_label', 'Filtro a usar')}</Text>
-                        {round.broadenedLeagueName ? (
-                            <Text className="text-indigo-200 text-xs font-bold">
-                                🏆 {round.broadenedLeagueName}  ·  {round.fillerBracket === '+100' ? '✨ +100' : `⭐ ${round.fillerBracket}`}
-                            </Text>
-                        ) : (
-                            <Text className="text-indigo-200 text-xs font-bold">
-                                {getFlag(planNationality || '')} {planNationality}  ·  {round.icon} {round.label}  ·  {quality === '+100' ? '✨ +100' : `⭐ ${quality}`}
-                            </Text>
-                        )}
+                    {/* Two possible searches, each labeled field-by-field so
+                        "Italy" the league is never confused with "Italian" the
+                        nationality. The direct one is always shown — it's the
+                        guaranteed way to get the real target(s). The wide one
+                        only appears when it's a genuinely good bet. */}
+                    <View className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2 mb-2">
+                        <Text className="text-emerald-400 text-[9px] font-black uppercase tracking-widest mb-1">{t('chemistry_direct_search', 'Búsqueda directa (garantizada)')}</Text>
+                        <View className="flex-row flex-wrap gap-x-3 gap-y-0.5">
+                            <Text className="text-emerald-200 text-xs"><Text className="text-emerald-500/60 text-[9px] uppercase">{t('nationality')}: </Text>{getFlag(planNationality || '')} {planNationality}</Text>
+                            <Text className="text-emerald-200 text-xs"><Text className="text-emerald-500/60 text-[9px] uppercase">{t('general_position')}: </Text>{round.icon} {round.label}</Text>
+                            <Text className="text-emerald-200 text-xs"><Text className="text-emerald-500/60 text-[9px] uppercase">{t('quality_range')}: </Text>{quality === '+100' ? '✨ +100' : `⭐ ${quality}`}</Text>
+                        </View>
                     </View>
+
+                    {round.broadenedLeagueName && (
+                        <View className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-3 py-2 mb-3">
+                            <Text className="text-indigo-400 text-[9px] font-black uppercase tracking-widest mb-1">{t('chemistry_wide_search', 'Búsqueda amplia (opcional)')}</Text>
+                            <View className="flex-row flex-wrap gap-x-3 gap-y-0.5">
+                                <Text className="text-indigo-200 text-xs"><Text className="text-indigo-400/60 text-[9px] uppercase">{t('league')}: </Text>🏆 {round.broadenedLeagueName}</Text>
+                                {round.fillerAgeRange && (
+                                    <Text className="text-indigo-200 text-xs"><Text className="text-indigo-400/60 text-[9px] uppercase">{t('age_promise')}: </Text>🎂 {round.fillerAgeRange}</Text>
+                                )}
+                                <Text className="text-indigo-200 text-xs"><Text className="text-indigo-400/60 text-[9px] uppercase">{t('quality_range')}: </Text>{round.fillerBracket === '+100' ? '✨ +100' : `⭐ ${round.fillerBracket}`}</Text>
+                            </View>
+                        </View>
+                    )}
 
                     {round.total > 0 ? (
                         <>
@@ -305,10 +457,21 @@ export default function ChemistryScreen() {
                                 ))}
                             </View>
 
+                            {round.broadenedLeagueName && round.poolSize !== null && (
+                                <View className={`px-3 py-2 rounded-xl mb-2 border ${round.probability !== null && round.probability >= 30 ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-amber-500/10 border-amber-500/20'}`}>
+                                    <Text className={`text-xs font-black ${round.probability !== null && round.probability >= 30 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                        {t('chemistry_probability', 'Probabilidad real de que salga el objetivo en una tirada: {{prob}}%', { prob: round.probability ?? 0 })}
+                                    </Text>
+                                    <Text className="text-white/40 text-[9px] mt-0.5">
+                                        {t('chemistry_pool_size', 'Ese filtro trae {{count}} jugadores en total — no está garantizado, es una entre {{count}}.', { count: round.poolSize })}
+                                    </Text>
+                                </View>
+                            )}
+
                             {round.broadenedLeagueName && round.fillers.length > 0 && (
                                 <>
                                     <Text className="text-white/30 text-[9px] font-black uppercase tracking-widest mb-1 mt-1">
-                                        {t('chemistry_fillers_label', 'Con ese filtro de liga+calidad también van a salir estos — a tu criterio si valen la pena', { count: round.fillers.length })}
+                                        {t('chemistry_fillers_label', 'Otros que también podrían salir con ese filtro — a tu criterio si valen la pena', { count: round.fillers.length })}
                                     </Text>
                                     <View className="mb-3">
                                         {round.fillers.map((p: any, idx: number) => (

@@ -8,7 +8,7 @@ import { track } from '@vercel/analytics';
  * Logs to both Vercel Analytics (Web/General) and Supabase (Custom Funnels).
  */
 
-export type AnalyticsSection = 'scout' | 'smart' | 'fantasy' | 'lists' | 'paywall' | 'general';
+export type AnalyticsSection = 'scout' | 'smart' | 'fantasy' | 'lists' | 'paywall' | 'chemistry' | 'general';
 
 export interface AnalyticsEvent {
     name: string;
@@ -87,7 +87,7 @@ export const Analytics = {
     }),
 
     // Feature Usage
-    trackUpsellView: (feature: 'smart' | 'fantasy') => logEvent({ 
+    trackUpsellView: (feature: 'smart' | 'fantasy' | 'chemistry') => logEvent({ 
         name: 'view_upsell', 
         section: feature 
     }),

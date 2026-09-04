@@ -102,7 +102,7 @@ function combinations(n: number, k: number): number {
     return res;
 }
 
-function pStrictSuccess(total: number, targets: number): number {
+export function pStrictSuccess(total: number, targets: number): number {
     if (targets > 3) return 0;
     if (targets === 0) return 0;
     if (total < targets) return 0;

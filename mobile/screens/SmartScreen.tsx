@@ -422,8 +422,15 @@ export default function SmartScreen() {
                                             <View className="flex-row flex-wrap gap-2">
                                                 {Object.entries(combinationResult.filters).map(([key, val]: [string, any]) => {
                                                     const displayVal = (!val || val === 'NULL' || val === 'Unknown' || val === 'Cualquiera') ? t('any') : String(val);
+                                                    // Bare values are ambiguous (e.g. "Italy" the league vs
+                                                    // "Italian" the nationality) — label which field this is.
+                                                    const fieldLabels: Record<string, string> = {
+                                                        pos: t('general_position'), nationality: t('nationality'),
+                                                        ageRange: t('age_promise'), qualityRange: t('quality_range'), league: t('league'),
+                                                    };
                                                     return (
                                                         <View key={key} className="bg-indigo-500/20 border border-indigo-500/30 px-3 py-1 rounded-full">
+                                                            <Text className="text-indigo-400/60 font-black text-[8px] uppercase">{fieldLabels[key] || key}</Text>
                                                             <Text className="text-indigo-300 font-bold text-[10px] uppercase">{displayVal}</Text>
                                                         </View>
                                                     );
@@ -597,8 +604,15 @@ export default function SmartScreen() {
                                     <View className="flex-row flex-wrap gap-2 mb-4">
                                         {Object.entries(trip.filters).map(([key, val]: [string, any]) => {
                                             if (!val || val === '' || val === 'Cualquiera' || val === 'Unknown') return null;
+                                            // Label each pill — "Italy" the league and "Italian" the
+                                            // nationality read the same without a field name attached.
+                                            const fieldLabels: Record<string, string> = {
+                                                pos: t('general_position'), nationality: t('nationality'),
+                                                ageRange: t('age_promise'), qualityRange: t('quality_range'), league: t('league'),
+                                            };
                                             return (
                                                 <View key={key} className="bg-indigo-500/20 px-2 py-1 rounded">
+                                                    <Text className="text-indigo-400/60 font-black text-[7px] uppercase">{fieldLabels[key] || key}</Text>
                                                     <Text className="text-indigo-300 font-bold text-[10px] uppercase">{key === 'nationality' ? getFlag(val) + ' ' + val : (key === 'pos' ? t(val) : val)}</Text>
                                                 </View>
                                             );

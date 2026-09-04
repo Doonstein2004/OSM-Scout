@@ -98,7 +98,16 @@ export default function TabLayout() {
           name="chemistry"
           options={{
             title: t('chemistry_tab', 'PLAN'),
-            tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>📋</Text>,
+            tabBarIcon: ({ color }) => (
+              <View>
+                <Text style={{ color, fontSize: 20 }}>📋</Text>
+                {!isPro && (
+                  <View className="absolute -top-1 -left-2 bg-amber-500 rounded-full w-4 h-4 items-center justify-center">
+                    <Text className="text-black text-[8px] font-black">★</Text>
+                  </View>
+                )}
+              </View>
+            ),
           }}
         />
         <Tabs.Screen
