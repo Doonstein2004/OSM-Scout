@@ -1,3 +1,5 @@
+import { toNatStem } from './flags';
+
 export interface OSMFilters {
   pos: string;
   ageRange: string;
@@ -150,7 +152,10 @@ export async function discoverCombosForPositions(
     query = query.ilike('position', `%${mainPos}%`);
   }
 
-  if (extraFilters?.nationality) query = query.eq('nationality', extraFilters.nationality);
+  // Stem match, not exact: the UI offers a canonical display alias per flag
+  // (e.g. "Brazil"), which often isn't the literal adjectival form stored in
+  // the DB (e.g. "Brazilian") — an exact eq() here silently returns nothing.
+  if (extraFilters?.nationality) query = query.ilike('nationality', `%${toNatStem(extraFilters.nationality)}%`);
   if (extraFilters?.ageRange) {
     const [minA, maxA] = getAgeBounds(extraFilters.ageRange);
     query = query.gte('age', minA).lte('age', maxA);

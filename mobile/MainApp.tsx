@@ -29,6 +29,7 @@ import LeaguesScreen from './screens/LeaguesScreen';
 import { useStore } from './context/StoreContext';
 import SmartScreen from './screens/SmartScreen';
 import ScoutScreen from './screens/ScoutScreen';
+import ChemistryScreen from './screens/ChemistryScreen';
 import { useSubscription } from './context/SubscriptionContext';
 
 export default function MainApp() {
@@ -214,6 +215,9 @@ t, i18n } = useTranslation();
                                 <Tabs.Trigger value="smart" className="px-4 py-2 ml-2">
                                     <Tabs.Label className={`font-black text-xs ${activeTab === 'smart' ? 'text-emerald-400' : 'text-emerald-900'}`}>SMART {targetPlayers.length > 0 && `(${targetPlayers.length})`}</Tabs.Label>
                                 </Tabs.Trigger>
+                                <Tabs.Trigger value="chemistry" className="px-4 py-2 ml-2">
+                                    <Tabs.Label className={`font-black text-xs ${activeTab === 'chemistry' ? 'text-indigo-300' : 'text-indigo-900'}`}>{t('chemistry_tab', 'PLAN').toUpperCase()}</Tabs.Label>
+                                </Tabs.Trigger>
                                 <Tabs.Trigger value="leagues" className="px-4 py-2 ml-2">
                                     <Tabs.Label className={`font-black text-xs ${activeTab === 'leagues' ? 'text-white' : 'text-slate-500'}`}>{t('leagues').toUpperCase()}</Tabs.Label>
                                 </Tabs.Trigger>
@@ -232,6 +236,10 @@ t, i18n } = useTranslation();
 
                         <Tabs.Content value="smart" style={{ flex: 1, width: '100%' }}>
                             <SmartScreen />
+                        </Tabs.Content>
+
+                        <Tabs.Content value="chemistry" style={{ flex: 1, width: '100%' }}>
+                            <ChemistryScreen />
                         </Tabs.Content>
 
                         <Tabs.Content value="lists" style={{ flex: 1, width: '100%' }}>

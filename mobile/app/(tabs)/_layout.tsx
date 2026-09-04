@@ -95,6 +95,13 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
+          name="chemistry"
+          options={{
+            title: t('chemistry_tab', 'PLAN'),
+            tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>📋</Text>,
+          }}
+        />
+        <Tabs.Screen
           name="leagues"
           options={{
             title: t('leagues'),

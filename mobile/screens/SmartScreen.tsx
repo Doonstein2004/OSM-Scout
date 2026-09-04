@@ -119,6 +119,7 @@ export default function SmartScreen() {
     const [combinationResult, setCombinationResult] = useState<any>(null);
     const [generatedTrips, setGeneratedTrips] = useState<any[]>([]);
     const [calculating, setCalculating] = useState(false);
+    const [hasSearchedPositions, setHasSearchedPositions] = useState(false);
     const [visibleTripsCount, setVisibleTripsCount] = useState<number>(30);
 
     const cleanFilters = () => {
@@ -127,6 +128,7 @@ export default function SmartScreen() {
         setSmartQualityRange(null);
         setTargetPositions([]);
         setGeneratedTrips([]);
+        setHasSearchedPositions(false);
     };
 
     const saveSmartFilter = async (magicResult: any) => {
@@ -193,6 +195,7 @@ export default function SmartScreen() {
     const calculateSubPositions = async () => {
         if (targetPositions.length === 0) return;
         setGeneratedTrips([]);
+        setHasSearchedPositions(false);
         setCalculating(true);
         try {
             const res = await discoverCombosForPositions(supabase, targetPositions, {
@@ -206,6 +209,7 @@ export default function SmartScreen() {
             console.log("Combo Error:", e);
         } finally {
             setCalculating(false);
+            setHasSearchedPositions(true);
         }
     };
 
@@ -217,6 +221,7 @@ export default function SmartScreen() {
     const removeTargetPos = (idx: number) => {
         setTargetPositions(prev => prev.filter((_, i) => i !== idx));
         setGeneratedTrips([]);
+        setHasSearchedPositions(false);
     };
 
     const PlayerItem = ({ p, isTarget }: { p: any, isTarget: boolean }) => (
@@ -655,10 +660,18 @@ export default function SmartScreen() {
                     )}
 
                     {!!targetPositions.length && !generatedTrips.length && !calculating && (
-                        <View className="py-20 opacity-30 items-center">
-                            <Text className="text-4xl mb-2">🔎</Text>
-                            <Text className="text-white text-center italic text-xs">{t('mining_desc')}</Text>
-                        </View>
+                        hasSearchedPositions ? (
+                            <View className="py-20 opacity-60 items-center">
+                                <Text className="text-4xl mb-2">🚫</Text>
+                                <Text className="text-white text-center font-bold text-xs mb-1">{t('mining_no_results_title', 'Sin combinaciones')}</Text>
+                                <Text className="text-slate-400 text-center text-[10px] px-8">{t('mining_no_results_desc', 'No encontramos ninguna combinación viable con estos filtros. Probá con otra nacionalidad, edad o calidad.')}</Text>
+                            </View>
+                        ) : (
+                            <View className="py-20 opacity-30 items-center">
+                                <Text className="text-4xl mb-2">🔎</Text>
+                                <Text className="text-white text-center italic text-xs">{t('mining_desc')}</Text>
+                            </View>
+                        )
                     )}
                 </View>
             )}
