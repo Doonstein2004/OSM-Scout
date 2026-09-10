@@ -8,7 +8,11 @@ create table public.clubs (
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
   constraint clubs_pkey primary key (id),
-  constraint unique_club_per_league unique (league_id, name),
+  -- Unique per club name, not per (league, name): a club can only be in one
+  -- league at a time, so scoping the constraint to league_id let a
+  -- promotion/relegation create a duplicate row instead of updating the
+  -- existing one, since the old (league_id, name) pair no longer matched.
+  constraint unique_club_name unique (name),
   constraint clubs_league_id_fkey foreign KEY (league_id) references leagues (id) on delete CASCADE
 ) TABLESPACE pg_default;
 

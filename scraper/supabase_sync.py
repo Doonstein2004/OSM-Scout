@@ -146,9 +146,13 @@ def sync_to_supabase(data, is_world_cup=False):
                     "updated_at": now
                 }
                 
+                # Conflict on name alone, not (league_id, name): a club can only
+                # be in one league at a time, so this is what makes a
+                # promotion/relegation update the existing row's league_id
+                # instead of leaving a stale duplicate behind in the old league.
                 @retry_supabase_call
                 def upsert_club():
-                    return supabase.table("clubs").upsert(club_payload, on_conflict="league_id,name").execute()
+                    return supabase.table("clubs").upsert(club_payload, on_conflict="name").execute()
                 
                 c_res = upsert_club()
                 if not c_res.data:
