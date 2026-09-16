@@ -207,10 +207,24 @@ export async function discoverCombosForPositions(
     const coveredPos = new Set(pool.map((p: any) => p.detailed_position));
     if (!dbTargets.every(tp => coveredPos.has(tp))) continue;
 
+    const [nat, leagueId, age, qual] = key.split('::');
+
+    // Every player in a specific age bucket is also counted in that same
+    // (nat, league, quality)'s 'Cualquiera' bucket, so 'Cualquiera' pool
+    // size >= this one's, with equality only when they're the exact same
+    // set of players — i.e. specifying age filtered out nobody. Showing
+    // both as separate "options" then is just the same recommendation
+    // twice; skip the age-specific one and let 'Cualquiera' (the simpler
+    // filter to actually set up in-game) represent it.
+    if (age !== 'Cualquiera') {
+      const anyAgeKey = `${nat}::${leagueId}::Cualquiera::${qual}`;
+      const anyAgePool = poolMap.get(anyAgeKey);
+      if (anyAgePool && anyAgePool.length === pool.length) continue;
+    }
+
     const prob = calculateSmartProbability(pool, dbTargets);
     if (prob < 1) continue;
 
-    const [nat, leagueId, age, qual] = key.split('::');
     const leagueName = getLeagueName(pool[0]);
 
     const matchingPlayers = pool.filter((p: any) => dbTargets.includes(p.detailed_position));
