@@ -146,7 +146,10 @@ export async function discoverCombosForPositions(
 
   let query = supabase
     .from('players')
-    .select('id, name, nationality, detailed_position, age, overall, value_amount, value_str, position, clubs!inner(id, name, league_id, leagues(id, name))');
+    .select('id, name, nationality, detailed_position, age, overall, value_amount, value_str, position, clubs!inner(id, name, league_id, is_world_cup, leagues(id, name))')
+    // World Cup / special-event squads (e.g. "World 2026") aren't reachable
+    // through the in-game scout search — recommending them is useless.
+    .eq('clubs.is_world_cup', false);
 
   if (mainPos !== 'Cualquiera') {
     query = query.ilike('position', `%${mainPos}%`);
@@ -260,7 +263,10 @@ export async function findOptimalCombination(supabase: any, targetPlayers: any[]
 
   let query = supabase
     .from('players')
-    .select('id, name, nationality, detailed_position, age, overall, value_amount, value_str, position, clubs!inner(id, name, leagues!inner(id, name))');
+    .select('id, name, nationality, detailed_position, age, overall, value_amount, value_str, position, clubs!inner(id, name, is_world_cup, leagues!inner(id, name))')
+    // Same as discoverCombosForPositions: World Cup squads aren't scoutable
+    // in the real game, so they can never be a legitimate recommendation.
+    .eq('clubs.is_world_cup', false);
 
   if (commonPos && commonPos !== 'Cualquiera') query = query.ilike('position', `%${commonPos}%`);
   if (commonNat && commonNat !== 'Cualquiera') query = query.eq('nationality', commonNat);
