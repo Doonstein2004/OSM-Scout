@@ -297,7 +297,24 @@ def sync_to_supabase(data, is_world_cup=False):
                 stale_res = fetch_stale_clubs()
                 stale_clubs = stale_res.data if stale_res.data else []
 
-                if stale_clubs:
+                # "No exception was raised" only proves each club we DID
+                # process went fine — it says nothing about whether the club
+                # LIST itself came back incomplete (a page that half-loaded,
+                # a selector that matched fewer rows than it should have).
+                # If cleanup would wipe out an implausibly large chunk of the
+                # league's known roster in one run, that's a stronger signal
+                # of a scraping glitch than of a mass relegation — bail out
+                # and leave it for manual review instead of trusting it.
+                previous_total = len(stale_clubs) + len(league["clubs"])
+                stale_fraction = (len(stale_clubs) / previous_total) if previous_total else 0
+                suspicious = len(stale_clubs) > 1 and stale_fraction > 0.3
+
+                if stale_clubs and suspicious:
+                    stale_names = ", ".join(c["name"] for c in stale_clubs)
+                    print(f"  ⚠️ Limpieza de clubes omitida para {league['league_name']}: se borrarían {len(stale_clubs)}/{previous_total} clubes ({stale_fraction:.0%}) — parece un fallo de scraping, no una liga que perdió equipos. Revisar manualmente: {stale_names}")
+                    diff_logger.info(f"\n--- LIGA: {league['league_name']} ---")
+                    diff_logger.info(f"  [!] Limpieza de clubes omitida — {len(stale_clubs)}/{previous_total} ({stale_fraction:.0%}) es demasiado para confiar en un solo scrape sin errores: {stale_names}")
+                elif stale_clubs:
                     stale_ids = [c["id"] for c in stale_clubs]
 
                     @retry_supabase_call
