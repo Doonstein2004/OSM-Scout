@@ -3,10 +3,10 @@ import json
 import re
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from playwright.sync_api import sync_playwright, TimeoutError
 from utils import login_to_osm, handle_popups, safe_navigate, BrowserCrashError, is_browser_crash
-from supabase_sync import sync_to_supabase
+from supabase_sync import sync_to_supabase, cleanup_missing_clubs
 import dotenv
 
 # Configuración de Logging
@@ -223,6 +223,15 @@ def scrape_osm(email):
                     elif "val" in txt: header_map["val"] = h
                     elif "inc" in txt or "funds" in txt: header_map["inc"] = h
 
+                # Marca de tiempo ANTES de tocar ningún club de esta liga — es el
+                # corte que usa cleanup_missing_clubs() para decidir qué clubes
+                # no se tocaron en esta corrida (y por lo tanto ya no existen).
+                league_started_at = datetime.now(timezone.utc).isoformat()
+                # Se pone en True ante cualquier señal de que la lista de clubes
+                # o su procesamiento no fue completo/confiable — desactiva la
+                # limpieza de clubes faltantes para esta liga si ocurre.
+                league_had_errors = False
+
                 # Paso 1: Obtener la lista de nombres de todos los clubes primero
                 # Usamos evaluate() con regex para matchear SOLO 'text: name' y no
                 # 'text: nameShort', 'text: nameInitials', etc. que comparten el prefijo.
@@ -245,9 +254,27 @@ def scrape_osm(email):
                     if name:
                         club_names.append(name)
                 
+                # La tabla puede devolver el mismo club dos veces (fila duplicada
+                # del lado de OSM, o el DOM no había terminado de re-renderizar
+                # cuando se leyó). Si eso pasa, un "cupo" de la lista se gasta
+                # reprocesando un club ya visto en vez del club real que
+                # correspondía a esa fila — dejando ese otro club sin tocar en
+                # esta corrida. No hay forma de saber CUÁL quedó afuera, así que
+                # esta corrida deja de ser confiable para borrar "lo que falta".
+                seen_names = set()
+                deduped_names = []
+                for name in club_names:
+                    if name in seen_names:
+                        logger.warning(f"    ⚠️ Club duplicado en la lista de la liga: {name} — la lista puede estar incompleta.")
+                        league_had_errors = True
+                        continue
+                    seen_names.add(name)
+                    deduped_names.append(name)
+                club_names = deduped_names
+
                 num_clubs = len(club_names)
                 logger.debug(f"    📋 Lista de clubes detectada ({num_clubs}): {', '.join(club_names[:5])}...")
-                
+
                 clubs_in_league = []
 
                 for j, club_target in enumerate(club_names):
@@ -342,6 +369,11 @@ def scrape_osm(email):
                             logger.error(f"    ❌ Error en club {j} (Intento {attempt+1}): {e}")
                             if attempt == max_retries - 1:
                                 logger.error(f"    ‼️ Fallo definitivo en {club_name}")
+                                # This club never made it into clubs_in_league, so
+                                # it'll look "missing" to cleanup_missing_clubs —
+                                # but it's missing because the scrape failed on
+                                # it, not because it's actually gone.
+                                league_had_errors = True
 
                             handle_popups(page)
                             logger.info(f"    🔄 Intentando recuperar navegando a: {league_url}")
@@ -351,7 +383,15 @@ def scrape_osm(email):
                             time.sleep(2)
 
                 leagues_data_final.append({"league_name": league_name, "clubs": clubs_in_league})
-                
+
+                # Borra los clubes de esta liga que no se tocaron desde que
+                # empezamos a procesarla — es decir, ya no están en su lista de
+                # clubes actual. Solo si nada dio señales de que la corrida fue
+                # incompleta (club duplicado en la lista, o algún club falló
+                # definitivamente).
+                if not league_had_errors:
+                    cleanup_missing_clubs(league_name, league_started_at)
+
                 # Ir a la lista de ligas
                 if not safe_navigate(page, "https://en.onlinesoccermanager.com/LeagueTypes", "table#leaguetypes-table"):
                     logger.warning("    ⚠️ No se pudo volver a la lista de ligas normalmente.")

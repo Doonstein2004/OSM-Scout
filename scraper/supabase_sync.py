@@ -133,11 +133,6 @@ def sync_to_supabase(data, is_world_cup=False):
             print(f"  ❌ Error upsert liga {league['league_name']}: {e}")
             continue
 
-        # Tracks whether every club in this league's scraped roster made it
-        # into the DB cleanly. Only a fully-clean run is trustworthy enough
-        # to delete clubs absent from it — see the cleanup step below.
-        league_had_errors = False
-
         for club in league["clubs"]:
             # UPSERT CLUB
             try:
@@ -166,7 +161,6 @@ def sync_to_supabase(data, is_world_cup=False):
                 club_id = c_res.data[0]["id"]
             except Exception as e:
                 print(f"    ❌ Error upsert club {club['name']}: {e}")
-                league_had_errors = True
                 continue
             
             # 1. OBTENER JUGADORES ACTUALES PARA COMPARAR (DIFF)
@@ -272,60 +266,87 @@ def sync_to_supabase(data, is_world_cup=False):
                         else:
                             print(f"    ⚠️ Limpieza omitida para {club['name']}: el scraper reportó filas con errores (jugadores pueden estar incompletos).")
                             diff_logger.info(f"  [!] Limpieza omitida para {club['name']} — scrape tuvo errores de fila, datos en DB conservados")
-                            # A club with incomplete row data isn't trustworthy
-                            # evidence for "this league's roster is now X" either
-                            # — skip the whole-league missing-club cleanup below.
-                            league_had_errors = True
                     else:
                         print(f"    ⚠️ Upsert de jugadores falló.")
                 except Exception as e:
                     print(f"    ❌ Error procesando jugadores de {club['name']}: {e}")
-                    league_had_errors = True
 
-        # 3. LIMPIEZA DE CLUBES — un club que existía en esta liga pero no
-        # apareció en el scrape de hoy ya no está ahí (descendió, se
-        # fusionó, fue renombrado). Solo se borra si TODA la liga se scrapeó
-        # sin errores, para no confundir un fallo transitorio con un club
-        # real que desapareció. Los jugadores del club se borran en cascada
-        # (players.club_id -> clubs.id ON DELETE CASCADE).
-        if not league_had_errors and len(league["clubs"]) > 0:
-            try:
-                @retry_supabase_call
-                def fetch_stale_clubs():
-                    return supabase.table("clubs").select("id, name").eq("league_id", league_id).lt("updated_at", now).execute()
 
-                stale_res = fetch_stale_clubs()
-                stale_clubs = stale_res.data if stale_res.data else []
+def cleanup_missing_clubs(league_name, run_started_at):
+    """
+    Deletes clubs belonging to `league_name` that weren't touched since
+    `run_started_at` — i.e. clubs that existed before this league's scrape
+    began and never got upserted during it, meaning they're no longer part
+    of its roster (relegated, merged, renamed). Cascades to their players
+    via the players.club_id -> clubs.id FK.
 
-                # "No exception was raised" only proves each club we DID
-                # process went fine — it says nothing about whether the club
-                # LIST itself came back incomplete (a page that half-loaded,
-                # a selector that matched fewer rows than it should have).
-                # If cleanup would wipe out an implausibly large chunk of the
-                # league's known roster in one run, that's a stronger signal
-                # of a scraping glitch than of a mass relegation — bail out
-                # and leave it for manual review instead of trusting it.
-                previous_total = len(stale_clubs) + len(league["clubs"])
-                stale_fraction = (len(stale_clubs) / previous_total) if previous_total else 0
-                suspicious = len(stale_clubs) > 1 and stale_fraction > 0.3
+    This is intentionally a separate, standalone call rather than logic
+    living inside sync_to_supabase(): that function is invoked once PER
+    CLUB (see main.py), never once per league with the full roster, so it
+    has no way to know when a league's clubs are all in — the caller has
+    to tell it explicitly, once, after the whole league has been processed.
 
-                if stale_clubs and suspicious:
-                    stale_names = ", ".join(c["name"] for c in stale_clubs)
-                    print(f"  ⚠️ Limpieza de clubes omitida para {league['league_name']}: se borrarían {len(stale_clubs)}/{previous_total} clubes ({stale_fraction:.0%}) — parece un fallo de scraping, no una liga que perdió equipos. Revisar manualmente: {stale_names}")
-                    diff_logger.info(f"\n--- LIGA: {league['league_name']} ---")
-                    diff_logger.info(f"  [!] Limpieza de clubes omitida — {len(stale_clubs)}/{previous_total} ({stale_fraction:.0%}) es demasiado para confiar en un solo scrape sin errores: {stale_names}")
-                elif stale_clubs:
-                    stale_ids = [c["id"] for c in stale_clubs]
+    `run_started_at` must be an ISO timestamp captured before the caller
+    began scraping this league's clubs (same format as the `updated_at`
+    written by sync_to_supabase — datetime.now(timezone.utc).isoformat()),
+    not "now" — every real club synced during this run has updated_at at
+    or after that moment; anything still older was never touched.
 
-                    @retry_supabase_call
-                    def delete_stale_clubs():
-                        return supabase.table("clubs").delete().in_("id", stale_ids).execute()
+    Guarded against a badly incomplete scrape (a page that half-loaded, a
+    selector that matched fewer rows than it should have): if this would
+    delete more than 30% of the league's known clubs, it's more likely a
+    scraping glitch than a mass relegation, so it's skipped and logged for
+    manual review instead of trusted.
+    """
+    supabase = get_supabase_client()
+    if not supabase:
+        return
 
-                    delete_stale_clubs()
-                    stale_names = ", ".join(c["name"] for c in stale_clubs)
-                    print(f"  🧹 {len(stale_clubs)} club(es) eliminados de {league['league_name']} (ya no están en la liga): {stale_names}")
-                    diff_logger.info(f"\n--- LIGA: {league['league_name']} ---")
-                    for c in stale_clubs:
-                        diff_logger.info(f"  [-] {c['name']} (CLUB ELIMINADO — ya no aparece en la liga)")
-            except Exception as e:
-                print(f"  ❌ Error limpiando clubes obsoletos de {league['league_name']}: {e}")
+    try:
+        @retry_supabase_call
+        def fetch_league():
+            return supabase.table("leagues").select("id").eq("name", league_name).execute()
+
+        l_res = fetch_league()
+        if not l_res.data:
+            return
+        league_id = l_res.data[0]["id"]
+
+        @retry_supabase_call
+        def fetch_all_clubs():
+            return supabase.table("clubs").select("id, name, updated_at").eq("league_id", league_id).execute()
+
+        all_res = fetch_all_clubs()
+        all_clubs = all_res.data if all_res.data else []
+        if not all_clubs:
+            return
+
+        stale_clubs = [c for c in all_clubs if c["updated_at"] < run_started_at]
+        if not stale_clubs:
+            return
+
+        previous_total = len(all_clubs)
+        stale_fraction = len(stale_clubs) / previous_total
+        suspicious = len(stale_clubs) > 1 and stale_fraction > 0.3
+
+        stale_names = ", ".join(c["name"] for c in stale_clubs)
+
+        if suspicious:
+            print(f"  ⚠️ Limpieza de clubes omitida para {league_name}: se borrarían {len(stale_clubs)}/{previous_total} ({stale_fraction:.0%}) — parece un fallo de scraping, no una liga que perdió equipos. Revisar manualmente: {stale_names}")
+            diff_logger.info(f"\n--- LIGA: {league_name} ---")
+            diff_logger.info(f"  [!] Limpieza de clubes omitida — {len(stale_clubs)}/{previous_total} ({stale_fraction:.0%}) es demasiado para confiar en un solo scrape: {stale_names}")
+            return
+
+        stale_ids = [c["id"] for c in stale_clubs]
+
+        @retry_supabase_call
+        def delete_stale_clubs():
+            return supabase.table("clubs").delete().in_("id", stale_ids).execute()
+
+        delete_stale_clubs()
+        print(f"  🧹 {len(stale_clubs)} club(es) eliminados de {league_name} (ya no están en la liga): {stale_names}")
+        diff_logger.info(f"\n--- LIGA: {league_name} ---")
+        for c in stale_clubs:
+            diff_logger.info(f"  [-] {c['name']} (CLUB ELIMINADO — ya no aparece en la liga)")
+    except Exception as e:
+        print(f"  ❌ Error limpiando clubes obsoletos de {league_name}: {e}")
