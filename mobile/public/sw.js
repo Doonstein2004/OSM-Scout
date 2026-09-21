@@ -1,13 +1,10 @@
 // Bump this on every meaningful change to this file's caching behavior —
 // it's what makes the activate handler below actually clear out whatever
 // got stuck in a visitor's browser from the previous version.
-const CACHE_NAME = 'osm-scout-v2';
-const RUNTIME_CACHE = 'osm-runtime-v2';
+const CACHE_NAME = 'osm-scout-v3';
+const RUNTIME_CACHE = 'osm-runtime-v3';
 
 self.addEventListener('install', (event) => {
-  // No precaching of '/' here on purpose — see the fetch handler: HTML
-  // navigations are always network-first, so there is nothing worth
-  // precaching that wouldn't just go stale between deploys.
   self.skipWaiting();
 });
 
@@ -37,65 +34,43 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // The app shell (HTML) must never be served stale: a cached index.html
-  // references content-hashed JS chunk filenames from whatever build was
-  // current when it was cached. Once a new version deploys, those old
-  // chunks are gone from the server — requesting one gets Vercel's SPA
-  // fallback (the *new* index.html, HTML not JS) instead of a 404, and the
-  // browser chokes on it with "Unexpected token '<'" trying to run it as a
-  // script. Always going to the network for navigations means the HTML a
-  // visitor gets always matches the chunks that actually exist right now.
-  if (event.request.mode === 'navigate') {
-    event.respondWith(networkFirst(event.request));
-    return;
-  }
+  // Full browser navigations (typing the URL, a hard reload) are left
+  // completely alone — no event.respondWith() at all — instead of routed
+  // through our own fetch+cache logic. A cached index.html references
+  // content-hashed JS chunk filenames from whatever build was current when
+  // it was cached; once a new version deploys those old chunks are gone
+  // from the server, so serving that stale HTML sends the browser off to
+  // request files that no longer exist. Letting the browser's own default
+  // network fetch handle navigations means it always gets the HTML that
+  // matches whatever chunks are actually live right now, full stop — no
+  // custom logic in the loop that could itself become a new failure mode.
+  if (event.request.mode === 'navigate') return;
 
-  // Everything else (content-hashed JS/CSS/image assets) is safe to cache
-  // aggressively — a given hashed URL's content never changes, so a stale
-  // cache entry for it isn't actually stale.
+  // Content-hashed JS/CSS/image chunks are safe to cache aggressively — a
+  // given hashed URL's content never changes. But a lazily-imported route
+  // chunk (e.g. the Smart tab's bundle) is fetched by the app's own module
+  // loader, not typed by a user, so a failure here has to surface as a real
+  // network error — synthesizing a "success" response (even a 503 one) for
+  // a failed fetch turns a transient network hiccup into a module the
+  // loader thinks it received and can't actually parse, which is worse
+  // than just letting the fetch fail and letting the loader's own retry
+  // logic (or the next reload) handle it.
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
 
-      return fetch(event.request)
-        .then((response) => {
-          if (response && response.ok) {
-            const clone = response.clone();
-            caches.open(RUNTIME_CACHE).then((cache) => {
-              cache.put(event.request, clone);
-            });
-          }
-          return response;
-        })
-        .catch(() => {
-          return new Response(JSON.stringify({ error: 'offline' }), {
-            status: 503,
-            headers: { 'Content-Type': 'application/json' }
+      return fetch(event.request).then((response) => {
+        if (response && response.ok) {
+          const clone = response.clone();
+          caches.open(RUNTIME_CACHE).then((cache) => {
+            cache.put(event.request, clone);
           });
-        });
+        }
+        return response;
+      });
     })
   );
 });
-
-async function networkFirst(request) {
-  try {
-    const response = await fetch(request);
-    if (response && response.ok) {
-      const clone = response.clone();
-      caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, clone));
-    }
-    return response;
-  } catch (e) {
-    // Only reachable offline — the last successfully cached shell beats
-    // nothing at all.
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    return new Response(JSON.stringify({ error: 'offline' }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-}
 
 async function staleWhileRevalidate(request) {
   const cached = await caches.match(request);
