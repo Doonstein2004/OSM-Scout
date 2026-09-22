@@ -232,12 +232,22 @@ def scrape_osm(email):
                 # limpieza de clubes faltantes para esta liga si ocurre.
                 league_had_errors = False
 
-                # Paso 1: Obtener la lista de nombres de todos los clubes primero
-                # Usamos evaluate() con regex para matchear SOLO 'text: name' y no
-                # 'text: nameShort', 'text: nameInitials', etc. que comparten el prefijo.
-                _NAME_BIND_JS = """
-                    el => {
-                        const spans = Array.from(el.querySelectorAll('span[data-bind]'));
+                # Paso 1: Obtener la lista de nombres de todos los clubes primero.
+                # Usamos evaluate_all() para leer TODAS las filas en una sola
+                # llamada JS atómica sobre el DOM tal como está en ese instante —
+                # no un .nth(i).evaluate() por fila en un loop de Python, que deja
+                # una ventana entre cada llamada para que la tabla (Knockout.js)
+                # se re-renderice a mitad de camino y una fila se lea dos veces
+                # (a costa de que otra nunca se lea). Eso fue justamente la causa
+                # real de los "club duplicado" con listas que no tenían ningún
+                # duplicado real — no un problema de los datos de OSM.
+                # Matchea SOLO 'text: name' y no 'text: nameShort', etc. que
+                # comparten el prefijo.
+                _NAMES_BIND_JS = """
+                    (rows, colIndex) => rows.map(row => {
+                        const cell = row.querySelectorAll('td')[colIndex];
+                        if (!cell) return null;
+                        const spans = Array.from(cell.querySelectorAll('span[data-bind]'));
                         const span = spans.find(s => {
                             const b = s.getAttribute('data-bind') || '';
                             // Buscar 'text: name' seguido de coma, espacio o fin de string
@@ -245,14 +255,11 @@ def scrape_osm(email):
                             return /(?:^|[,]\\s*)text:\\s*name(?:\\s*[,]|$)/.test(b);
                         });
                         return span ? span.innerText.trim() : null;
-                    }
+                    })
                 """
-                club_names = []
                 rows_loc = page.locator("table#leaguetypes-table tbody tr.clickable")
-                for c_idx in range(rows_loc.count()):
-                    name = rows_loc.nth(c_idx).locator("td").nth(header_map["club"]).evaluate(_NAME_BIND_JS)
-                    if name:
-                        club_names.append(name)
+                raw_names = rows_loc.evaluate_all(_NAMES_BIND_JS, header_map["club"])
+                club_names = [name for name in raw_names if name]
                 
                 # La tabla puede devolver el mismo club dos veces (fila duplicada
                 # del lado de OSM, o el DOM no había terminado de re-renderizar
