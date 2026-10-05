@@ -103,6 +103,10 @@ t, i18n } = useTranslation();
     useEffect(() => {
         const fetchOptions = async () => {
             try {
+                // EAGER WAKE-UP: Silent ping to wake up the DB and connection pool 
+                // while the user is still looking at the initial UI
+                supabase.from('players').select('id').limit(1).then(() => console.log('[System] Eager DB Wake-up complete')).catch(() => {});
+
                 // Nationalities — built from static flag map, no network needed
                 const uniqueNats: string[] = [];
                 const seenFlags = new Set<string>();

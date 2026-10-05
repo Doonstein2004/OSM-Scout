@@ -85,6 +85,7 @@ export default function ScoutScreen() {
     const [offlineMeta, setOfflineMeta] = useState<{ filterDesc: string; savedAt: number } | null>(null);
     const [fetchError, setFetchError] = useState(false);
     const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [loadingPhase, setLoadingPhase] = useState<0 | 1 | 2>(0);
     const {
         players, setPlayers,
         loading, setLoading,
@@ -143,6 +144,18 @@ export default function ScoutScreen() {
         setPage(0);
         setHasMore(false);
     }, [sortAscending, sortBy]);
+
+    // Dynamic UX for long loading (Cold Starts)
+    useEffect(() => {
+        if (loading && players.length === 0) {
+            setLoadingPhase(0);
+            const t1 = setTimeout(() => setLoadingPhase(1), 4000);
+            const t2 = setTimeout(() => setLoadingPhase(2), 12000);
+            return () => { clearTimeout(t1); clearTimeout(t2); };
+        } else {
+            setLoadingPhase(0);
+        }
+    }, [loading, players.length]);
 
     async function fetchPlayers(targetPage = page, isReset = false) {
         if (!isOnline) { Alert.alert('Sin conexión', 'Está viendo resultados en caché.'); return; }
@@ -624,7 +637,23 @@ export default function ScoutScreen() {
                 ListHeaderComponent={ListHeader}
                 ListFooterComponent={ListFooter}
                 ListEmptyComponent={() => (
-                    loading ? <ScoutSkeleton /> : (
+                    loading ? (
+                        <View className="flex-1 w-full mt-2">
+                            {loadingPhase > 0 && (
+                                <Animated.View entering={FadeInUp} className="mb-6 items-center bg-indigo-500/10 border border-indigo-500/30 p-4 rounded-3xl mx-4">
+                                    <Text className="text-xl mb-2">{loadingPhase === 1 ? '🚀' : '⚙️'}</Text>
+                                    <Text className="text-indigo-300 font-bold text-xs text-center leading-relaxed">
+                                        {loadingPhase === 1 
+                                            ? 'Iniciando servidores para tu primera búsqueda...' 
+                                            : 'Despertando la base de datos, esto tomará unos segundos más...'}
+                                    </Text>
+                                </Animated.View>
+                            )}
+                            <View className="px-4">
+                                <ScoutSkeleton />
+                            </View>
+                        </View>
+                    ) : (
                         (players.length === 0 && !loading) ? (
                             <View className="items-center justify-center py-20 opacity-40">
                                 <Text className="text-5xl mb-3">👻</Text>
