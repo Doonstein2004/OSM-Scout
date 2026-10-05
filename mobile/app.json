@@ -13,7 +13,8 @@
       "expo-router",
       "expo-system-ui",
       "react-native-edge-to-edge",
-      "expo-updates"
+      "expo-updates",
+      "expo-web-browser"
     ],
     "updates": {
       "url": "https://u.expo.dev/ff28b719-249b-4507-81a0-87e36ea07436",

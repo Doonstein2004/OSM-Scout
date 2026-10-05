@@ -12,7 +12,7 @@
  */
 
 /** Long enough for a slow mobile connection, short enough not to look frozen. */
-const DEFAULT_TIMEOUT_MS = 12_000;
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 export class TimeoutError extends Error {
     constructor(ms: number) {

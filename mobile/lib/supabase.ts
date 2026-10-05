@@ -31,8 +31,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     // every query (player search, filters, auth) hangs forever with the
     // spinner stuck on screen. A heavily filtered search can legitimately
     // take longer than a plain request, so give it more room than the
-    // 12s default used for lighter calls like the quota endpoint.
-    fetch: (input, init) => fetchWithTimeout(input as string, init, 20_000),
+    // default used for lighter calls like the quota endpoint, especially
+    // to accommodate Supabase free tier database cold starts.
+    fetch: (input, init) => fetchWithTimeout(input as string, init, 60_000),
   },
 });
 
