@@ -145,40 +145,55 @@ export async function discoverCombosForPositions(
 
   const isWorldStar = extraFilters?.qualityRange === '+100' || extraFilters?.qualityRange === '100+';
 
-  let query = supabase
-    .from('players')
-    .select('id, name, nationality, detailed_position, age, overall, value_amount, value_str, position, clubs!inner(id, name, league_id, is_world_cup, leagues(id, name))')
-    // World Cup / special-event squads (e.g. "World 2026") aren't reachable
-    // through the in-game scout search — recommending them is useless.
-    .eq('clubs.is_world_cup', false);
+  // Postgrest builders are mutable (.range() edits the same request), so
+  // parallel pages each need their own fresh builder.
+  const buildQuery = () => {
+    let q = supabase
+      .from('players')
+      .select('id, name, nationality, detailed_position, age, overall, value_amount, value_str, position, clubs!inner(id, name, league_id, is_world_cup, leagues(id, name))')
+      // World Cup / special-event squads (e.g. "World 2026") aren't reachable
+      // through the in-game scout search — recommending them is useless.
+      .eq('clubs.is_world_cup', false);
 
-  if (mainPos !== 'Cualquiera') {
-    query = query.ilike('position', `%${mainPos}%`);
-  }
+    if (mainPos !== 'Cualquiera') {
+      q = q.ilike('position', `%${mainPos}%`);
+    }
 
-  // Stem match, not exact: the UI offers a canonical display alias per flag
-  // (e.g. "Brazil"), which often isn't the literal adjectival form stored in
-  // the DB (e.g. "Brazilian") — an exact eq() here silently returns nothing.
-  if (extraFilters?.nationality) query = query.ilike('nationality', `%${toNatStem(extraFilters.nationality)}%`);
-  if (extraFilters?.ageRange) {
-    const [minA, maxA] = getAgeBounds(extraFilters.ageRange);
-    query = query.gte('age', minA).lte('age', maxA);
-  }
-  if (extraFilters?.qualityRange && !isWorldStar) {
-    const [minQ, maxQ] = getQualityBounds(extraFilters.qualityRange);
-    query = query.gte('overall', minQ).lte('overall', maxQ);
-  }
+    // Stem match, not exact: the UI offers a canonical display alias per flag
+    // (e.g. "Brazil"), which often isn't the literal adjectival form stored in
+    // the DB (e.g. "Brazilian") — an exact eq() here silently returns nothing.
+    if (extraFilters?.nationality) q = q.ilike('nationality', `%${toNatStem(extraFilters.nationality)}%`);
+    if (extraFilters?.ageRange) {
+      const [minA, maxA] = getAgeBounds(extraFilters.ageRange);
+      q = q.gte('age', minA).lte('age', maxA);
+    }
+    if (extraFilters?.qualityRange && !isWorldStar) {
+      const [minQ, maxQ] = getQualityBounds(extraFilters.qualityRange);
+      q = q.gte('overall', minQ).lte('overall', maxQ);
+    }
+    // Stable order so concurrent ranges never overlap or skip rows.
+    return q.order('id', { ascending: true });
+  };
 
   let allPlayers: any[] = [];
-  let from = 0;
   const chunk = 1000;
+  const PARALLEL_PAGES = 6;
+  let page = 0;
+  let done = false;
 
-  while (true) {
-    const { data, error } = await withDbRetry('smart.positions', () => query.range(from, from + chunk - 1));
-    if (error || !data) break;
-    allPlayers = allPlayers.concat(data);
-    if (data.length < chunk) break;
-    from += chunk;
+  while (!done) {
+    const batch = await Promise.all(
+      Array.from({ length: PARALLEL_PAGES }, (_, i) => {
+        const from = (page + i) * chunk;
+        return withDbRetry('smart.positions', () => buildQuery().range(from, from + chunk - 1));
+      }),
+    );
+    for (const { data, error } of batch) {
+      if (error || !data) { done = true; break; }
+      allPlayers = allPlayers.concat(data);
+      if (data.length < chunk) { done = true; break; }
+    }
+    page += PARALLEL_PAGES;
   }
 
   if (allPlayers.length === 0) return [];

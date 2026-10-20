@@ -9,8 +9,6 @@
  * statement_timeout), 5xx/522 from the gateway, or an aborted fetch.
  * A second attempt almost always succeeds because caches are warm by then.
  *
- * Every attempt is logged with the `[DB-Debug]` prefix (duration, error code,
- * message) so we can tell whether the DB waking up is really the cause.
  */
 import { useSyncExternalStore } from 'react';
 
@@ -45,11 +43,6 @@ export function useDbWaking(): boolean {
     );
 }
 
-function describeError(e: any): string {
-    if (!e) return 'unknown';
-    const parts = [e.name, e.code, e.status, e.message].filter(Boolean);
-    return parts.join(' | ') || String(e);
-}
 
 /** Client mistakes (bad filter/syntax/constraint) will never fix themselves. */
 function isRetryable(e: any): boolean {
@@ -65,45 +58,41 @@ function isRetryable(e: any): boolean {
  * rethrown only after the final attempt.
  */
 export async function withDbRetry<T extends { data?: any; error?: any }>(
-    label: string,
+    _label: string,
     run: () => PromiseLike<T>,
 ): Promise<T> {
     let slowFlagged = false;
     let lastResult: T | undefined;
     let lastThrown: any;
-    const startAll = Date.now();
 
     const slowTimer = setTimeout(() => {
         slowFlagged = true;
         activeSlowQueries++;
         refreshSnapshot();
-        console.log(`[DB-Debug] ${label}: >${SLOW_MS}ms and still pending -> showing wake-up notice`);
     }, SLOW_MS);
 
     try {
         for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-            const t0 = Date.now();
+            let deadline: ReturnType<typeof setTimeout> | undefined;
             try {
                 const res = await Promise.race([
                     Promise.resolve(run()),
-                    new Promise<never>((_, rej) => setTimeout(
-                        () => rej(Object.assign(new Error(`attempt exceeded ${ATTEMPT_TIMEOUT_MS}ms (stuck before/inside fetch - auth lock?)`), { name: 'AttemptTimeout' })),
-                        ATTEMPT_TIMEOUT_MS,
-                    )),
+                    new Promise<never>((_, rej) => {
+                        deadline = setTimeout(
+                            () => rej(Object.assign(new Error(`attempt exceeded ${ATTEMPT_TIMEOUT_MS}ms`), { name: 'AttemptTimeout' })),
+                            ATTEMPT_TIMEOUT_MS,
+                        );
+                    }),
                 ]) as T;
                 lastThrown = undefined;
                 lastResult = res;
-                const ms = Date.now() - t0;
-                if (!res.error) {
-                    console.log(`[DB-Debug] ${label}: OK attempt ${attempt} in ${ms}ms (total ${Date.now() - startAll}ms)`);
-                    return res;
-                }
-                console.warn(`[DB-Debug] ${label}: attempt ${attempt} FAILED in ${ms}ms -> ${describeError(res.error)}`);
+                if (!res.error) return res;
                 if (!isRetryable(res.error)) return res;
             } catch (e) {
                 lastThrown = e;
-                console.warn(`[DB-Debug] ${label}: attempt ${attempt} THREW in ${Date.now() - t0}ms -> ${describeError(e)}`);
                 if (!isRetryable(e)) throw e;
+            } finally {
+                if (deadline) clearTimeout(deadline);
             }
 
             if (attempt < MAX_ATTEMPTS) {
@@ -120,7 +109,6 @@ export async function withDbRetry<T extends { data?: any; error?: any }>(
         refreshSnapshot();
     }
 
-    console.error(`[DB-Debug] ${label}: gave up after ${MAX_ATTEMPTS} attempts`);
     if (lastThrown) throw lastThrown;
     return lastResult as T;
 }
