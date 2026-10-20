@@ -1,4 +1,5 @@
 import { toNatStem } from './flags';
+import { withDbRetry } from './dbWake';
 
 export interface OSMFilters {
   pos: string;
@@ -173,7 +174,7 @@ export async function discoverCombosForPositions(
   const chunk = 1000;
 
   while (true) {
-    const { data, error } = await query.range(from, from + chunk - 1);
+    const { data, error } = await withDbRetry('smart.positions', () => query.range(from, from + chunk - 1));
     if (error || !data) break;
     allPlayers = allPlayers.concat(data);
     if (data.length < chunk) break;
@@ -294,7 +295,7 @@ export async function findOptimalCombination(supabase: any, targetPlayers: any[]
   }
   if (commonLeague && commonLeague !== 'Cualquiera') query = query.filter('clubs.leagues.name', 'ilike', commonLeague);
 
-  const { data: pool, error } = await query.limit(500);
+  const { data: pool, error } = await withDbRetry('smart.players', () => query.limit(500));
   if (error) return null;
   
   const finalPool = pool || [];

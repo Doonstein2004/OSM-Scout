@@ -9,6 +9,8 @@ import { getFlag } from '../lib/flags';
 import { useStore } from '../context/StoreContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { Analytics } from '../lib/analytics';
+import { useDbWaking } from '../lib/dbWake';
+import { DbWakingNotice } from '../components/DbWakingNotice';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence, FadeInUp, LinearTransition } from 'react-native-reanimated';
 
 function TrendingSection() {
@@ -119,6 +121,7 @@ export default function SmartScreen() {
     const [combinationResult, setCombinationResult] = useState<any>(null);
     const [generatedTrips, setGeneratedTrips] = useState<any[]>([]);
     const [calculating, setCalculating] = useState(false);
+    const dbWaking = useDbWaking();
     const [hasSearchedPositions, setHasSearchedPositions] = useState(false);
     const [visibleTripsCount, setVisibleTripsCount] = useState<number>(30);
 
@@ -379,6 +382,7 @@ export default function SmartScreen() {
                                 </View>
                             </View>
 
+                            {calculating && dbWaking && <DbWakingNotice />}
                             <Button size="lg" className="bg-emerald-500 rounded-2xl h-14 shadow-xl shadow-emerald-500/20 w-full" onPress={calculateCombination} isDisabled={calculating}>
                                 {calculating ? (
                                     <Spinner size="md" className="text-black" />
@@ -562,6 +566,7 @@ export default function SmartScreen() {
                                     </TouchableOpacity>
                                 ))}
                             </View>
+                            {calculating && dbWaking && <DbWakingNotice />}
                             <Button size="lg" className="bg-indigo-500 rounded-2xl h-14 shadow-xl shadow-indigo-500/20 w-full" onPress={calculateSubPositions} isDisabled={calculating}>
                                 {calculating ? (
                                     <Spinner size="md" className="text-white" />

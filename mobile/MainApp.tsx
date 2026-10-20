@@ -15,6 +15,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { FadeInUp, LinearTransition } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './lib/supabase';
+import { wakeDatabase } from './lib/dbWake';
 import { getCachedLeagues, setCachedLeagues, getCachedClubs, setCachedClubs } from './lib/cache';
 import './lib/i18n';
 import { useTranslation } from 'react-i18next';
@@ -105,7 +106,7 @@ t, i18n } = useTranslation();
             try {
                 // EAGER WAKE-UP: Silent ping to wake up the DB and connection pool 
                 // while the user is still looking at the initial UI
-                supabase.from('players').select('id').limit(1).then(() => console.log('[System] Eager DB Wake-up complete')).catch(() => {});
+                wakeDatabase(supabase).then(() => console.log('[System] Eager DB Wake-up complete'));
 
                 // Nationalities — built from static flag map, no network needed
                 const uniqueNats: string[] = [];

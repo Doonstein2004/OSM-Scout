@@ -13,6 +13,8 @@ import { getCachedLastSearch, setCachedLastSearch } from '../lib/cache';
 import { useNetworkStatus } from '../lib/useNetworkStatus';
 import { useSubscription } from '../context/SubscriptionContext';
 import { memo } from 'react';
+import { withDbRetry, useDbWaking } from '../lib/dbWake';
+import { DbWakingNotice } from '../components/DbWakingNotice';
 
 const PlayerCard = memo(({ player, isTarget, onToggleTarget, formatPrice, getEstMultiplier, t }: any) => {
     return (
@@ -113,6 +115,7 @@ export default function ScoutScreen() {
     const canSaveFilter = isPro || limits.savedFilters === -1 || savedFilters.length < limits.savedFilters;
 
     const PAGE_SIZE = 50;
+    const dbWaking = useDbWaking();
 
     // Load offline cache on mount if needed
     useEffect(() => {
@@ -250,7 +253,7 @@ export default function ScoutScreen() {
                 .order(sortBy, { ascending: sortAscending })
                 .range(from, to);
 
-            const { data, error } = await query;
+            const { data, error } = await withDbRetry('scout.players', () => query);
             if (error) throw error;
 
             if (data) {
@@ -639,15 +642,8 @@ export default function ScoutScreen() {
                 ListEmptyComponent={() => (
                     loading ? (
                         <View className="flex-1 w-full mt-2">
-                            {loadingPhase > 0 && (
-                                <Animated.View entering={FadeInUp} className="mb-6 items-center bg-indigo-500/10 border border-indigo-500/30 p-4 rounded-3xl mx-4">
-                                    <Text className="text-xl mb-2">{loadingPhase === 1 ? '🚀' : '⚙️'}</Text>
-                                    <Text className="text-indigo-300 font-bold text-xs text-center leading-relaxed">
-                                        {loadingPhase === 1 
-                                            ? 'Iniciando servidores para tu primera búsqueda...' 
-                                            : 'Despertando la base de datos, esto tomará unos segundos más...'}
-                                    </Text>
-                                </Animated.View>
+                            {(loadingPhase > 0 || dbWaking) && (
+                                <DbWakingNotice phase={dbWaking || loadingPhase === 2 ? 2 : 1} />
                             )}
                             <View className="px-4">
                                 <ScoutSkeleton />
