@@ -18,6 +18,9 @@ type Listener = () => void;
 
 const SLOW_MS = 4000;
 const MAX_ATTEMPTS = 4;
+// supabase-js fetch timeout only covers the network call; a stuck auth lock
+// hangs BEFORE fetch starts, so each attempt also gets its own deadline.
+const ATTEMPT_TIMEOUT_MS = 20000;
 
 let activeSlowQueries = 0;
 let retrying = 0;
@@ -81,7 +84,13 @@ export async function withDbRetry<T extends { data?: any; error?: any }>(
         for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             const t0 = Date.now();
             try {
-                const res = await run();
+                const res = await Promise.race([
+                    Promise.resolve(run()),
+                    new Promise<never>((_, rej) => setTimeout(
+                        () => rej(Object.assign(new Error(`attempt exceeded ${ATTEMPT_TIMEOUT_MS}ms (stuck before/inside fetch - auth lock?)`), { name: 'AttemptTimeout' })),
+                        ATTEMPT_TIMEOUT_MS,
+                    )),
+                ]) as T;
                 lastThrown = undefined;
                 lastResult = res;
                 const ms = Date.now() - t0;

@@ -122,16 +122,26 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
         const syncAuth = async () => {
             const { supabase } = await import('../lib/supabase');
-            const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-                if (session?.user?.id) {
-                    const { initializePurchases } = await import('../lib/purchases');
-                    await initializePurchases(session.user.id);
-                    const latestPlan = await checkProEntitlement(session.user.id);
-                    console.log('[Subscription] Auth change check:', latestPlan);
-                    await setPlan(latestPlan);
-                } else if (event === 'SIGNED_OUT') {
-                    await setPlan('free');
-                }
+            // IMPORTANT: gotrue awaits this callback while holding the auth lock.
+            // Calling supabase (directly or via checkProEntitlement/quota) inside it
+            // deadlocks every other query until the lock is force-released, so the
+            // real work is deferred out of the lock with setTimeout.
+            const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+                setTimeout(async () => {
+                    try {
+                        if (session?.user?.id) {
+                            const { initializePurchases } = await import('../lib/purchases');
+                            await initializePurchases(session.user.id);
+                            const latestPlan = await checkProEntitlement(session.user.id);
+                            console.log('[Subscription] Auth change check:', latestPlan);
+                            await setPlan(latestPlan);
+                        } else if (event === 'SIGNED_OUT') {
+                            await setPlan('free');
+                        }
+                    } catch (e) {
+                        console.error('[Subscription] Auth change handler error', e);
+                    }
+                }, 0);
             });
             return subscription;
         };
