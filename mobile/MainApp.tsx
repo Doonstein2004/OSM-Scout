@@ -16,6 +16,7 @@ import Animated, { FadeInUp, LinearTransition } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './lib/supabase';
 import { wakeDatabase } from './lib/dbWake';
+import { syncSavedFilters, clearLocalSavedFilters } from './lib/savedFilters';
 import { getCachedLeagues, setCachedLeagues, getCachedClubs, setCachedClubs } from './lib/cache';
 import './lib/i18n';
 import { useTranslation } from 'react-i18next';
@@ -90,15 +91,35 @@ t, i18n } = useTranslation();
 
 
     useEffect(() => {
+        let cancelled = false;
         const loadSaved = async () => {
             try {
-                const data = await AsyncStorage.getItem('savedFilters');
-                if (data) setSavedFilters(JSON.parse(data));
+                const list = await syncSavedFilters();
+                if (!cancelled) setSavedFilters(list);
             } catch (error) {
                 console.error("Error loading saved filters", error);
             }
         };
         loadSaved();
+
+        // Lists belong to the account: re-sync when the session changes. Deferred
+        // with setTimeout because gotrue awaits this callback while holding the
+        // auth lock, and syncing queries Supabase.
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+            setTimeout(async () => {
+                if (event === 'SIGNED_OUT') {
+                    await clearLocalSavedFilters();
+                    if (!cancelled) setSavedFilters([]);
+                } else if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+                    loadSaved();
+                }
+            }, 0);
+        });
+
+        return () => {
+            cancelled = true;
+            subscription.unsubscribe();
+        };
     }, []);
 
     useEffect(() => {

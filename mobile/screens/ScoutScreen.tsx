@@ -13,6 +13,7 @@ import { getCachedLastSearch, setCachedLastSearch } from '../lib/cache';
 import { useNetworkStatus } from '../lib/useNetworkStatus';
 import { useSubscription } from '../context/SubscriptionContext';
 import { memo } from 'react';
+import { persistSavedFilters } from '../lib/savedFilters';
 import { withDbRetry, useDbWaking } from '../lib/dbWake';
 import { DbWakingNotice } from '../components/DbWakingNotice';
 
@@ -336,7 +337,7 @@ export default function ScoutScreen() {
         const newSaved = [...savedFilters, newFilter];
         setSavedFilters(newSaved);
         try {
-            await AsyncStorage.setItem('savedFilters', JSON.stringify(newSaved));
+            await persistSavedFilters(newSaved);
             Alert.alert(t('filter_saved', '¡Filtro Guardado!'), t('saved_empty_desc', 'Guardado en tus Listas.'));
         } catch (e) {
             console.error("Error saving filters", e);

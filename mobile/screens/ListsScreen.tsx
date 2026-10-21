@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '../context/StoreContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { Analytics } from '../lib/analytics';
+import { persistSavedFilters } from '../lib/savedFilters';
 
 export default function ListsScreen() {
     const { t } = useTranslation();
@@ -54,7 +55,7 @@ export default function ListsScreen() {
         const newSaved = savedFilters.filter((f: any) => f.id !== id);
         setSavedFilters(newSaved);
         try {
-            await AsyncStorage.setItem('savedFilters', JSON.stringify(newSaved));
+            await persistSavedFilters(newSaved);
         } catch (e) {
             console.error("Error saving after delete", e);
         }

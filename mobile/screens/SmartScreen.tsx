@@ -9,6 +9,7 @@ import { getFlag } from '../lib/flags';
 import { useStore } from '../context/StoreContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { Analytics } from '../lib/analytics';
+import { persistSavedFilters } from '../lib/savedFilters';
 import { useDbWaking } from '../lib/dbWake';
 import { DbWakingNotice } from '../components/DbWakingNotice';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence, FadeInUp, LinearTransition } from 'react-native-reanimated';
@@ -171,7 +172,7 @@ export default function SmartScreen() {
         const newSaved = [...savedFilters, newFilter];
         setSavedFilters(newSaved);
         try {
-            await AsyncStorage.setItem('savedFilters', JSON.stringify(newSaved));
+            await persistSavedFilters(newSaved);
             Alert.alert(t('filter_saved'), t('saved_empty_desc'));
         } catch (e) {
             console.error("Error saving filters", e);
